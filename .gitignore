@@ -1,0 +1,18 @@
+# macOS
+.DS_Store
+
+# Simulation outputs
+sim/*.vvp
+sim/*.out
+sim/*.vcd
+sim/*.fst
+sim/*.log
+obj_dir/
+*.jou
+*.wdb
+xsim.dir/
+work/
+transcript
+vsim.wlf
+ucdb/
+*.ucdb
