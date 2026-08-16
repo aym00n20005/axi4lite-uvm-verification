@@ -2,7 +2,7 @@
 
 A UVM verification environment for an AXI4-Lite peripheral subsystem: an address-decoding interconnect, a register-file slave with mixed access policies (RW / RO / W1C), and a byte-addressable memory slave.
 
-**Status: in progress.** Spec frozen at v0.2 on 12 August 2026. See milestones below for what is and isn't built. Claims here are limited to what actually runs.
+**Status: in progress.** Spec frozen at v0.2 on 12 August 2026, currently v0.3 — see `docs/dut_spec.md` §10 for every revision and its rationale. See milestones below for what is and isn't built. Claims here are limited to what actually runs.
 
 `SystemVerilog` · `UVM` · `SVA` · `UVM RAL` · `Functional Coverage` · `AXI4-Lite`
 

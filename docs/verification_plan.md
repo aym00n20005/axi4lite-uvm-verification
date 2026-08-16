@@ -4,7 +4,7 @@
 **Author:** <your name> · Final-year ECE, Bengaluru
 **DUT:** AXI4-Lite peripheral subsystem — register-file slave, memory slave, decoding interconnect
 **Methodology:** SystemVerilog / UVM · SVA · functional coverage · UVM RAL
-**Spec reference:** `docs/dut_spec.md` v0.2
+**Spec reference:** `docs/dut_spec.md` v0.3
 
 ---
 

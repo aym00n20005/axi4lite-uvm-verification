@@ -100,8 +100,11 @@ endinterface : axi4lite_if
 module axi4lite_protocol_checker #(
     parameter int ADDR_WIDTH  = 32,
     parameter int DATA_WIDTH  = 32,
-    // Set 0 for the memory slave, which has no alignment-independent
-    // behaviour worth a separate checker instance.
+    // Leave at 1 for BOTH slaves. Spec §6 requires the memory slave to return
+    // SLVERR on a misaligned access just as the register slave does, so there
+    // is no instance where disabling this check is correct. (v0.2 of this file
+    // recommended 0 for the memory slave; that would have switched off a check
+    // the spec demands. See dut_spec.md §10.)
     parameter bit CHECK_ALIGN = 1
 ) (
     input logic                    ACLK,

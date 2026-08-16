@@ -1,6 +1,6 @@
 # DUT Specification — AXI4-Lite Peripheral Subsystem
 
-**Version 0.2 — specification freeze, 12 August 2026**
+**Version 0.3 — 14 August 2026** · frozen at v0.2 on 12 August 2026; see §10 for what changed and why
 
 This document is the **source of truth**. If the RTL does something not written here, either the RTL is wrong or this document is incomplete — and the second case is fixed by editing this file first, then the RTL. Never the other way round.
 
@@ -91,11 +91,24 @@ When more than one error condition applies to a single transaction, exactly one 
 
 No error condition modifies any register or memory state.
 
+On any error response, `RDATA` is driven to `0x0000_0000`. AMBA treats read data
+as don't-care when `RRESP` is not `OKAY`; a deterministic zero is specified here
+so the scoreboard can check it rather than mask it.
+
 ---
 
 ## 5. Register-file slave
 
-Base `0x0000_0000`. Register selected by `ADDR[7:2]`.
+Base `0x0000_0000`. Offset within the region is `ADDR[11:0]`.
+
+- The offset is **implemented** if and only if `ADDR[11:5] == 0` — that is, an
+  offset below `0x20`. Anything from `0x20` to `0xFFF` is unimplemented → `SLVERR`.
+- Within the implemented range, the register is selected by `ADDR[4:2]`.
+
+> **Changed in v0.3.** v0.2 said "register selected by `ADDR[7:2]`", which
+> contradicts §4. `ADDR[7:2]` spans only the low 256 bytes, so offset `0x100`
+> would alias onto `CTRL` at `0x00` and be serviced normally, where §4 requires
+> `SLVERR`. The decode must qualify on the full offset.
 
 | Offset | Name | Access | Reset | Implemented bits |
 |---|---|---|---|---|
@@ -115,8 +128,17 @@ Base `0x0000_0000`. Register selected by `ADDR[7:2]`.
 ### `CTRL`
 
 - `[0] enable` — RW. Gates `COUNTER` increment.
-- `[1] reset_stats` — RW, **self-clearing**. Reads back as 0 on the cycle after the write completes.
+- `[1] reset_stats` — RW, **self-clearing**. **Always reads as 0.**
 - Writing `reset_stats = 1` does **not** alter `enable`. The two bits are independently testable.
+
+> **Clarified in v0.3.** v0.2 said "reads back as 0 on the cycle after the write
+> completes", which leaves open whether a read landing on the write cycle itself
+> could observe 1. It is specified as a command bit: the write produces a
+> one-cycle internal pulse that clears `COUNTER`, and the read path returns 0 for
+> `CTRL[1]` unconditionally. This is strictly stronger than the v0.2 wording, so
+> it cannot violate it, and it removes a cycle-accurate race the scoreboard would
+> otherwise have to model. The RAL model must declare `CTRL[1]` accordingly —
+> it is not a plain RW bit and `bit_bash` will flag it if modelled as one.
 
 ### `STATUS` (read-only)
 
@@ -125,6 +147,23 @@ Base `0x0000_0000`. Register selected by `ADDR[7:2]`.
   > **Why write-path only.** If `busy` also covered the read path, then reading `STATUS` would itself be an in-flight read, and `busy` would return 1 unconditionally — the bit could never be observed as 0. Restricting it to the write path means a read of `STATUS` concurrent with an in-flight write legitimately observes 1, and 0 otherwise. Testability drove this decision.
 
 - `[1] error` — 1 when the most recently *completed* register transaction returned `SLVERR`. Cleared by reset, or by the next register transaction that completes with `OKAY`.
+
+  **A read of `STATUS` itself is transparent: it does not update `error`.**
+  Every other completed register transaction — read or write, to any other
+  offset, or any erroring access — updates the bit.
+
+  > **Clarified in v0.3.** Reading `STATUS` is itself a register transaction
+  > completing with `OKAY`, so the v0.2 rule taken literally means the read that
+  > observes `error == 1` also clears it, making the bit read-once. A status bit
+  > destroyed by observing it is not a useful status bit. Excluding the
+  > observation from the update rule resolves the contradiction rather than
+  > hiding it. A misaligned access that *decodes* to the `STATUS` offset is not
+  > a read of `STATUS` — it errors, and it sets the bit.
+  >
+  > If a write and a read complete on the same cycle, the **write** determines
+  > the resulting value. Single-outstanding makes this reachable only with a
+  > concurrent read and write, and a tiebreak must be specified rather than
+  > left to synthesis.
 
 ### `INT_STATUS` — W1C, with real event sources
 
@@ -214,3 +253,31 @@ Kept on a `bug-injection` branch, one commit each, so any single bug can be chec
 **Note on BUG-001.** It is injected into the *driver*, not the DUT. `AWVALID` is master-driven, so no slave-side defect can violate `AWVALID` stability — v0.1 of this spec paired that bug with that assertion incorrectly. BUG-001 qualifies the checker; BUG-002 is the DUT-side defect that the same class of assertion catches. Both are kept deliberately: one proves the checker works, the other proves it catches a real design defect.
 
 If the testbench misses any of these, the testbench is what's broken. Fix it before fixing the DUT.
+
+---
+
+## 10. Revision history
+
+The spec is the source of truth, so every clarification that changes what the
+RTL must do is a spec revision, made *before* the RTL is written.
+
+### v0.3 — 14 August 2026
+
+Four items, all found while deriving the register-slave architecture from v0.2.
+Two were genuine contradictions; two were gaps that would have been silently
+decided in RTL.
+
+| # | Section | Change | Kind |
+|---|---|---|---|
+| 1 | §5 | Register decode is `ADDR[11:5] == 0` for implemented, `ADDR[4:2]` to select. Was "`ADDR[7:2]`", which aliased offset `0x100` onto `CTRL` and contradicted §4. | contradiction |
+| 2 | §5 | `CTRL.reset_stats` always reads 0. Was "reads 0 on the cycle after the write completes", which left a cycle-accurate race undefined. | gap |
+| 3 | §5 | A read of `STATUS` does not update `STATUS.error`; write wins a same-cycle tie. Was self-contradictory, since reading `STATUS` is itself an OKAY transaction that would clear the bit being read. | contradiction |
+| 4 | §4 | `RDATA` is `0x0000_0000` on any error response. Was unspecified. | gap |
+
+A fifth item is outside this document: `axi4lite_protocol_checker`'s
+`CHECK_ALIGN` parameter comment recommended `0` for the memory slave, which
+would disable a check §6 requires. Both slave binds use `CHECK_ALIGN = 1`.
+
+### v0.2 — 12 August 2026
+
+Specification freeze.
