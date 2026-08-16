@@ -8,6 +8,9 @@ sim/*.vcd
 sim/*.fst
 sim/*.log
 obj_dir/
+coverage.dat
+sim/coverage.dat
+sim/cov_annotated/
 *.jou
 *.wdb
 xsim.dir/
