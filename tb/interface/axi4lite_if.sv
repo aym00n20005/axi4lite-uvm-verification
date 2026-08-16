@@ -297,8 +297,23 @@ module axi4lite_protocol_checker #(
     // independent per-channel threads rather than lockstepping AW and W
     // — if it stays uncovered, none of your protocol testing is real.
     //==================================================================
-    c_aw_before_w     : cover property (aw_acc ##[1:$] w_acc);
-    c_w_before_aw     : cover property (w_acc  ##[1:$] aw_acc);
+    // The ordering covers MUST be qualified with the pending-flags.
+    //
+    // Written unqualified as `w_acc ##[1:$] aw_acc` (v0.2 of this file),
+    // the property is satisfied ACROSS transactions: any W accept
+    // followed eventually by any AW accept matches, and that happens in
+    // any multi-transaction run whatever the ordering inside each one.
+    // The cover point would then read as covered while proving nothing
+    // about driver independence — which is the entire reason the
+    // verification plan lists it.
+    //
+    // Qualifying on the flags pins the match inside a SINGLE transaction:
+    // w_pend can only still be set at the AW accept if no B response has
+    // intervened, and a B response cannot occur without aw_pend. The
+    // !b_done term excludes the one remaining escape, a back-to-back
+    // accept landing on the cycle the previous response completes.
+    c_aw_before_w     : cover property ((aw_acc && !w_pend)  ##[1:$] (w_acc  && aw_pend && !b_done));
+    c_w_before_aw     : cover property ((w_acc  && !aw_pend) ##[1:$] (aw_acc && w_pend  && !b_done));
     c_aw_w_same_cycle : cover property (aw_acc && w_acc);
 
     c_write_backpressure : cover property
