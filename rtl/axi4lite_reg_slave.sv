@@ -21,6 +21,8 @@
 //      ever true and exactly one INT_STATUS bit is ever set (§4).
 //======================================================================
 
+`timescale 1ns/1ps
+
 module axi4lite_reg_slave #(
     parameter int ADDR_WIDTH = 32,
     parameter int DATA_WIDTH = 32
