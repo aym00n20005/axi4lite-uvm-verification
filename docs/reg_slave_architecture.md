@@ -1,6 +1,6 @@
 # Register-File Slave — Architecture
 
-**Day 3 · 14 Aug 2026 · precedes `rtl/axi4lite_reg_slave.sv`**
+**16 Aug 2026 · precedes `rtl/axi4lite_reg_slave.sv`**
 
 Design derived from `dut_spec.md` §5 and, where the prose is looser than the
 checker, from the assertions in `tb/interface/axi4lite_if.sv`. Every block below

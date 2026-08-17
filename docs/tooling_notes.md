@@ -1,7 +1,7 @@
 # Local Tooling — measured capability
 
-**13 Aug 2026.** Measured, not assumed. Every claim here was produced by
-running the tool on this project's own files.
+**16 Aug 2026**, cover counts updated 17 Aug. Measured, not assumed. Every
+claim here was produced by running the tool on this project's own files.
 
 ---
 
@@ -77,28 +77,35 @@ locally. That is a November milestone anyway.
 
 ## Cover-property status
 
-Measured from `sanity_tb.sv`, which is a smoke test and not expected to close
-anything. Recorded so the September/October coverage work starts from a real
-baseline rather than zero.
+Measured from the two smoke benches, which are not expected to close anything.
+Recorded so the September/October coverage work starts from a real baseline
+rather than zero.
 
-| Cover point | Hits | Note |
-|---|---|---|
-| `c_aw_before_w` | 1 | qualified form — see below |
-| `c_w_before_aw` | 1 | qualified form |
-| `c_aw_w_same_cycle` | 11 | |
-| `c_misaligned_aw` | 1 | |
-| `c_misaligned_ar` | 1 | |
-| `c_partial_strobe` | 2 | |
-| `c_zero_strobe` | 1 | |
-| `c_resp_okay` | 26 | |
-| `c_resp_slverr` | 5 | |
-| `c_resp_decerr` | **0** | correct — DECERR comes from the interconnect, September |
-| `c_b2b_write` | **0** | `sanity_tb` leaves a gap between transactions |
-| `c_b2b_read` | **0** | as above |
-| `c_write_backpressure` | **0** | `BREADY`/`RREADY` tied high in `sanity_tb` |
-| `c_read_backpressure` | **0** | as above |
+The checker binds to both slave modules, so each bench reports the covers of
+its own instance. Reproduce with `make coverage`.
+
+| Cover point | `sanity_tb` (reg) | `sanity_mem_tb` (mem) | Note |
+|---|---|---|---|
+| `c_aw_before_w` | 1 | 1 | qualified form — see below |
+| `c_w_before_aw` | 1 | 1 | qualified form |
+| `c_aw_w_same_cycle` | 11 | 11 | |
+| `c_misaligned_aw` | 1 | 1 | |
+| `c_misaligned_ar` | 1 | 1 | |
+| `c_partial_strobe` | 2 | 6 | the memory bench sweeps each byte lane individually |
+| `c_zero_strobe` | 1 | 1 | SLVERR on the register slave, OKAY no-op on memory |
+| `c_resp_okay` | 26 | 24 | |
+| `c_resp_slverr` | 5 | 2 | memory has only one error class; the register slave has three |
+| `c_resp_decerr` | **0** | **0** | correct — DECERR comes from the interconnect, September |
+| `c_b2b_write` | **0** | **0** | both benches leave a gap between transactions |
+| `c_b2b_read` | **0** | **0** | as above |
+| `c_write_backpressure` | **0** | **0** | `BREADY`/`RREADY` tied high in both benches |
+| `c_read_backpressure` | **0** | **0** | as above |
 
 All five zeros are expected and attributable, not unexplained holes.
+
+`c_resp_slverr` at 5 versus 2 is the numeric shadow of a design difference: the
+register slave has three error classes in a priority cascade (misaligned,
+unimplemented offset, partial strobe), the memory slave has one (misaligned).
 
 ## Defect found in the checker's ordering covers
 

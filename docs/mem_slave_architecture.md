@@ -1,6 +1,6 @@
 # Memory Slave — Architecture
 
-**14 Aug 2026 · `rtl/axi4lite_mem_slave.sv`, spec v0.3 §6**
+**17 Aug 2026 · `rtl/axi4lite_mem_slave.sv`, spec v0.3 §6**
 
 The AXI handshake skeleton is identical to the register slave — same
 accept-flags, same combinational `do_write`, same bypass muxes, same
