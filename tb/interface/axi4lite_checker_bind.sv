@@ -23,3 +23,9 @@ bind axi4lite_reg_slave axi4lite_protocol_checker #(
     .DATA_WIDTH  (32),
     .CHECK_ALIGN (1)
 ) u_chk (.*);
+
+bind axi4lite_mem_slave axi4lite_protocol_checker #(
+    .ADDR_WIDTH  (32),
+    .DATA_WIDTH  (32),
+    .CHECK_ALIGN (1)
+) u_chk (.*);
