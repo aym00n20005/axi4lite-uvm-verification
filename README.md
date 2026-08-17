@@ -12,6 +12,17 @@ A UVM verification environment for an AXI4-Lite peripheral subsystem: an address
 
 Verification, not design. The RTL is deliberately small so effort goes into methodology: a written verification plan that precedes the code, protocol assertions bound to the DUT, constrained-random stimulus with independent per-channel timing, a scoreboard with a reference model, a RAL register model, and a documented bug database proving the testbench actually catches things.
 
+## Two tracks, one repository
+
+This repo contains the verification environment **and the flow that runs it**, because the second exists to serve the first:
+
+| Track | What it is | Where |
+|---|---|---|
+| **Verification** | UVM environment, SVA protocol checker, scoreboard, RAL, coverage model | `rtl/`, `tb/`, `docs/verification_plan.md` |
+| **Flow automation** | Regression runner, log parser with failure signatures, triage, register generator, coverage and vplan reporting | `scripts/`, [docs/automation_plan.md](docs/automation_plan.md) |
+
+The automation is not a side project. Once there are more than a handful of tests and multiple seeds, running by hand stops being viable — coverage closure is only reachable through the regression flow, and the register bank, the RAL model and the register documentation are generated from one YAML source so they cannot drift apart. The automation track starts **after 31 August**; before then the only tooling here is `scripts/run_sim.sh` and a minimal `make test`.
+
 ## Architecture
 
 ```
@@ -85,20 +96,23 @@ axi4lite-uvm-verification/
 ├── docs/
 │   ├── verification_plan.md
 │   ├── dut_spec.md
+│   ├── automation_plan.md
 │   └── bug_reports/
-├── scripts/
+├── scripts/                # run_sim.sh today; Makefile + Python flow from September
 └── README.md
 ```
 
 ## Milestones
 
-| Target | Milestone | Status |
-|---|---|---|
-| 31 Aug 2026 | Both slaves' RTL, UVM agent, smoke test passing, protocol checker bound and proven by a deliberate break | in progress |
-| 30 Sep 2026 | Interconnect, decode, DECERR, scoreboard with reference model | not started |
-| 31 Oct 2026 | RAL model, coverage model, backpressure randomisation | not started |
-| 30 Nov 2026 | Coverage closure, regression scripting, bug database, formal experiment | not started |
-| 31 Dec 2026 | Documentation complete | not started |
+| Target | Verification | Flow automation | Status |
+|---|---|---|---|
+| 31 Aug 2026 | Both slaves' RTL, UVM agent, smoke test passing, protocol checker bound and proven by a deliberate break | `make test` only — nothing else before DVCon | in progress |
+| 30 Sep 2026 | Interconnect, decode, DECERR, scoreboard with reference model | Regression runner (parallel seeds, `results.json`), log parser with failure signatures | not started |
+| 31 Oct 2026 | RAL model, coverage model, backpressure randomisation | Failure-signature triage; register generator emitting RTL bank + RAL + docs from `regmap.yaml` | not started |
+| 30 Nov 2026 | Coverage closure, bug database, formal experiment | Coverage trend reporting, vplan traceability matrix, measured LLM triage assist | not started |
+| 31 Dec 2026 | Documentation complete | Toolkit documented and cleaned up | not started |
+
+The October RAL model is *generated*, not hand-written — that is the point at which the two tracks stop being parallel and start depending on each other.
 
 ## Results
 
@@ -116,12 +130,15 @@ axi4lite-uvm-verification/
 - **Simulation:** EDA Playground with Aldec Riviera-PRO (free, full UVM support, Google login is sufficient)
 - **Quick RTL checks:** Icarus Verilog / Verilator — no UVM
 - **Formal (planned, Nov):** SymbiYosys + Yosys
+- **Flow (from Sep):** Make + Python (regression, parsing, code generation), TCL for simulator control
 - **Version control:** Git
 
 ## Documentation
 
 - [Verification plan](docs/verification_plan.md) — features F01–F29, methods, coverage model, test list, open questions
 - [DUT specification](docs/dut_spec.md) — the source of truth for all DUT behaviour
+- [Automation plan](docs/automation_plan.md) — the regression, triage and register-generation flow that runs the above
+- [Tooling notes](docs/tooling_notes.md) — measured simulator capability, not assumed
 
 ## References
 
@@ -131,32 +148,41 @@ axi4lite-uvm-verification/
 
 ---
 
-## Schedule to DVCon (12 Aug – 1 Sep 2026)
+## Schedule to DVCon — updated Monday 17 August 2026
 
-Today is Wednesday 12 August. DVCon India opens Tuesday 1 September. That is **20 days**.
+DVCon India opens Tuesday 1 September. That is **15 days left**, and the schedule is **two days ahead**: the checker bind and the deliberate-break experiment, planned for 19 and 20 August, both landed on 16 August.
+
+### Done (12–16 Aug)
+
+| Date | Delivered |
+|---|---|
+| 12–13 Aug | Spec read end to end and revised to **v0.3** (two contradictions, two gaps — `dut_spec.md` §10). AMBA AXI4-Lite chapter. `axi4lite_if.sv` + protocol checker. |
+| 14–15 Aug | Register slave: architecture notes first, then RTL complete and compiling. |
+| 16 Aug | Sanity TB (write/read `SCRATCH`, readback). Checker **bound** to the register slave. Local sim flow `run_sim.sh` with measured tooling notes. **BUG-002 injected and `a_bvalid_not_early` seen firing** — the 20 Aug item, done four days early. Found and fixed a real defect in the checker's own ordering covers (unqualified, matching across transactions: 10 spurious hits → 1 genuine). |
+
+The checker defect is the strongest thing in the repo right now and it isn't on the original schedule — it is worth rehearsing as its own answer.
+
+### Remaining (17–31 Aug)
 
 | Date | Day | Task |
 |---|---|---|
-| Wed 12 Aug | Wed | **Spec freeze.** Read `dut_spec.md` and `verification_plan.md` end to end. Edit anything you disagree with — it's your spec, not mine. Register for DVCon. |
-| Thu 13 Aug | Thu | Read the AXI4-Lite chapter of the AMBA spec. Draw AW/W/B/AR/R and the handshake rules from memory until it's automatic. |
-| Fri 14 Aug | Fri | Register slave: architecture on paper first (accept-flags, response FSM, register bank), then start RTL. |
-| Sat 15 Aug | Sat | Register slave RTL complete and compiling. |
-| Sun 16 Aug | Sun | Sanity TB: one write, one read to `SCRATCH`, `$display` the readback. |
-| Mon 17 Aug | Mon | Memory slave RTL with real `WSTRB` masking. |
-| Tue 18 Aug | Tue | Memory sanity TB. Partial write proves only strobed bytes changed. |
-| Wed 19 Aug | Wed | Bind `axi4lite_protocol_checker` to both slaves. Fix whatever fires. |
-| Thu 20 Aug | Thu | **Break it deliberately.** Inject BUG-002 (BVALID before W accepted). Watch `a_bvalid_not_early` fire. Revert. |
-| Fri 21 Aug | Fri | UVM fundamentals: phases, `uvm_component` hierarchy, `config_db`, factory. Hello-world on EDA Playground. |
-| Sat 22 Aug | Sat | UVM fundamentals continued. Understand the sequence/sequencer/driver handshake before writing any. |
-| Sun 23 Aug | Sun | `axi_transaction` + `axi_sequencer`. |
-| Mon 24 Aug | Mon | `axi_driver` — write path, with `fork`-based per-channel threads from the start. |
-| Tue 25 Aug | Tue | `axi_driver` — read path. Write-then-readback working. |
-| Wed 26 Aug | Wed | `axi_monitor`. Verify it reconstructs transactions independently of the driver. |
-| Thu 27 Aug | Thu | Minimal scoreboard: associative-array reference model, compare on reads. |
-| Fri 28 Aug | Fri | Randomise VALID delays and READY backpressure. Confirm `c_w_before_aw` is covered. |
-| Sat 29 Aug | Sat | Clean the repo, finish this README, write the one-page PDF brief. |
-| Sun 30 Aug | Sun | DVCon rehearsal: explain the project in 90 seconds, then 20. Record yourself. Booth research. |
-| Mon 31 Aug | Mon | **Freeze the conference build.** No new code. Print the vplan and one-pagers. Pack. |
-| Tue 1 Sep | Tue | DVCon India, Day 1. |
+| 17 Aug | Mon | Memory slave RTL with real `WSTRB` masking. Extend `axi4lite_checker_bind.sv` to it while writing it — the bind pattern already exists. |
+| 18 Aug | Tue | Memory sanity TB. Partial write proves only strobed bytes changed. Re-run `run_sim.sh --coverage`; record the new cover counts in `tooling_notes.md`. |
+| 19 Aug | Wed | *(recovered day)* Write up **BUG-002** properly in `docs/bug_reports/` — detection method, waveform evidence, root cause. The experiment is done; the evidence is not captured, and `docs/bug_reports/` is empty. Re-run the injection against the memory slave. |
+| 20 Aug | Thu | UVM fundamentals: phases, `uvm_component` hierarchy, `config_db`, factory. Hello-world on EDA Playground. *(pulled forward one day)* |
+| 21 Aug | Fri | UVM fundamentals continued. Understand the sequence/sequencer/driver handshake before writing any. |
+| 22 Aug | Sat | `axi_transaction` + `axi_sequencer`. |
+| 23 Aug | Sun | `axi_driver` — write path, with `fork`-based per-channel threads from the start. |
+| 24 Aug | Mon | `axi_driver` — read path. Write-then-readback working. |
+| 25 Aug | Tue | `axi_monitor`. Verify it reconstructs transactions independently of the driver. |
+| 26 Aug | Wed | Minimal scoreboard: associative-array reference model, compare on reads. |
+| 27 Aug | Thu | Randomise VALID delays and READY backpressure. Target the four attributable zeros in `tooling_notes.md`: `c_w_before_aw` on the qualified cover, `c_b2b_write`/`c_b2b_read`, both backpressure covers. |
+| 28 Aug | Fri | *(recovered day — buffer)* Absorb whatever slipped. If nothing slipped: the 20-line `make test` Makefile, which is the only automation allowed before 31 Aug. |
+| 29 Aug | Sat | Clean the repo, finish this README, write the one-page PDF brief. |
+| 30 Aug | Sun | DVCon rehearsal: explain the project in 90 seconds, then 20. Record yourself. Booth research. |
+| 31 Aug | Mon | **Freeze the conference build.** No new code. Print the vplan and one-pagers. Pack. |
+| 1 Sep | Tue | DVCon India, Day 1. |
 
-**Thursday 20 August is the important one.** An assertion you have never seen fail is an assertion you don't know works — and "I broke my own DUT to prove my checker caught it" is a sentence worth saying out loud at DVCon.
+**The two recovered days are spent, not banked** — one on documenting the bug that was already found, one as buffer before the freeze. UVM is fifteen days of work compressed into eight; the buffer is what stops the 29 Aug clean-up from being sacrificed to it.
+
+**Both hard deadlines are unchanged:** UVM starts 20 August at the latest, and the build freezes 31 August regardless of what is unfinished.
