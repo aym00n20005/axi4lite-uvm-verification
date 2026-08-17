@@ -120,10 +120,15 @@ The October RAL model is *generated*, not hand-written — that is the point at 
 
 | Metric | Value |
 |---|---|
-| Tests passing | — |
-| Functional coverage | — |
-| Code coverage | — |
-| Bugs found and root-caused | — |
+| Tests passing | 58 **smoke** checks — 31 register slave, 27 memory slave — under both Icarus 13.0 and Verilator 5.050 |
+| Functional coverage | not started; cover-property baseline in [tooling notes](docs/tooling_notes.md) |
+| Code coverage | not started — needs Riviera-PRO |
+| Bugs found and root-caused | 1 found (checker cover-property defect); 3 injected and detected (v0.2 decode, write-data bypass, BUG-003) |
+
+**Read "tests passing" narrowly.** Those are non-UVM smoke checks from
+`tb/sanity_tb.sv` and `tb/sanity_mem_tb.sv` — no scoreboard, no randomisation,
+no coverage. They prove the RTL breathes; they are not verification, and the
+number will be replaced by the UVM test list once it exists.
 
 ## Tools
 
