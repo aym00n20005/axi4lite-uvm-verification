@@ -1,6 +1,12 @@
 # macOS
 .DS_Store
 
+# Personal working notes, not part of the project
+docs/resume_bullets.md
+
+# Regression outputs
+results/
+
 # Simulation outputs
 sim/*.vvp
 sim/*.out
