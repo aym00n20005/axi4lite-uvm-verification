@@ -7,7 +7,7 @@
 #   ./scripts/run_sim.sh icarus  mem            memory slave, no assertions
 #   ./scripts/run_sim.sh verilator all --coverage
 #
-# Simulator capability, measured 13 Aug 2026 — see docs/tooling_notes.md:
+# Simulator capability, measured 16 Aug 2026 — see docs/tooling_notes.md:
 #
 #   Icarus 13.0     cannot do this checker at all.  Concurrent assertions
 #                   are unsupported ("sorry: concurrent_assertion_item"),
@@ -31,7 +31,8 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BUILD_ROOT="${TMPDIR:-/tmp}/axi4lite_vbuild"
+BUILD_ROOT="${TMPDIR:-/tmp}"
+BUILD_ROOT="${BUILD_ROOT%/}/axi4lite_vbuild"
 BUILD_ROOT="${BUILD_ROOT// /_}"
 
 RTL=( "$ROOT/rtl/axi4lite_reg_slave.sv" "$ROOT/rtl/axi4lite_mem_slave.sv" )
@@ -78,12 +79,21 @@ for T in "${TARGETS[@]}"; do
       verilator)
         BUILD="$BUILD_ROOT/$TOP"
         rm -rf "$BUILD"
+        # Verilator creates only the final --Mdir level, so after a
+        # `make clean` has removed BUILD_ROOT entirely it cannot create
+        # BUILD_ROOT/$TOP. Make the parent ourselves.
+        mkdir -p "$BUILD"
         verilator --binary --assert --timing -Wno-fatal -j 4 \
             ${COVERAGE:+$COVERAGE} \
             --top-module "$TOP" \
             --Mdir "$BUILD" -o "$TOP" \
             "${RTL[@]}" "$IF" "$BIND" "$TB"
         ( cd "$ROOT/sim" && "$BUILD/$TOP" ) || FAILED=1
+        # Verilator drops coverage.dat in the run directory. Both benches
+        # run there, so keep them apart or the second overwrites the first.
+        if [[ -n "$COVERAGE" && -f "$ROOT/sim/coverage.dat" ]]; then
+            mv "$ROOT/sim/coverage.dat" "$ROOT/sim/coverage_$TOP.dat"
+        fi
         ;;
 
       *)
@@ -93,10 +103,15 @@ for T in "${TARGETS[@]}"; do
     esac
 done
 
-if [[ -n "$COVERAGE" && -f "$ROOT/sim/coverage.dat" ]]; then
-    echo ""
-    echo "=== cover properties ==="
-    awk -F"'" '/^C/ {print}' "$ROOT/sim/coverage.dat" | sed "s/.*c_/c_/" | sort
+if [[ -n "$COVERAGE" ]]; then
+    for T in "${TARGETS[@]}"; do
+        TOP_VAR="TOP_$T"; TOP="${!TOP_VAR}"
+        DAT="$ROOT/sim/coverage_$TOP.dat"
+        [[ -f "$DAT" ]] || continue
+        echo ""
+        echo "=== cover properties — $TOP ==="
+        awk -F"'" '/^C/ {print}' "$DAT" | sed "s/.*c_/c_/" | sort
+    done
 fi
 
 exit $FAILED
