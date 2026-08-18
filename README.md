@@ -123,7 +123,7 @@ The October RAL model is *generated*, not hand-written — that is the point at 
 | Tests passing | 58 **smoke** checks — 31 register slave, 27 memory slave — under both Icarus 13.0 and Verilator 5.050 |
 | Functional coverage | not started; cover-property baseline in [tooling notes](docs/tooling_notes.md) |
 | Code coverage | not started — needs Riviera-PRO |
-| Bugs found and root-caused | 1 found (checker cover-property defect); 3 injected and detected (v0.2 decode, write-data bypass, BUG-003) |
+| Bugs found and root-caused | 1 genuine ([BUG-007](docs/bug_reports/BUG-007.md), checker cover defect); 4 injected and detected ([BUG-002](docs/bug_reports/BUG-002.md), BUG-003, v0.2 decode, write-data bypass) |
 
 **Read "tests passing" narrowly.** Those are non-UVM smoke checks from
 `tb/sanity_tb.sv` and `tb/sanity_mem_tb.sv` — no scoreboard, no randomisation,
@@ -144,6 +144,7 @@ number will be replaced by the UVM test list once it exists.
 - [DUT specification](docs/dut_spec.md) — the source of truth for all DUT behaviour
 - [Automation plan](docs/automation_plan.md) — the regression, triage and register-generation flow that runs the above
 - [Tooling notes](docs/tooling_notes.md) — measured simulator capability, not assumed
+- [Bug reports](docs/bug_reports/) — every bug, injected or genuine, with evidence and root cause
 
 ## References
 
