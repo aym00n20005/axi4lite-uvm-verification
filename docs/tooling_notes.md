@@ -1,6 +1,6 @@
 # Local Tooling — measured capability
 
-**16 Aug 2026**, cover counts updated 17 Aug. Measured, not assumed. Every
+**16 Aug 2026**, cover counts updated 17 Aug, UVM simulator 19 Aug. Measured, not assumed. Every
 claim here was produced by running the tool on this project's own files.
 
 ---
@@ -11,7 +11,8 @@ claim here was produced by running the tool on this project's own files.
 |---|---|---|---|---|---|
 | Icarus Verilog | 13.0 | yes | **no** | no | no |
 | Verilator | 5.050 | yes | **yes** | yes | no |
-| Riviera-PRO (EDA Playground) | — | yes | yes | yes | **yes** |
+| Riviera-PRO (EDA Playground) | 2025.04 | yes | yes | yes | compiles only |
+| Xcelium (EDA Playground) | 25.03 | yes | yes | yes | **yes** |
 
 ### Icarus cannot run this checker
 
@@ -43,8 +44,8 @@ blocks. Confirmed live by injecting BUG-002 and watching the assertion fire:
 ```
 
 This is the local assertion flow. It has **no UVM support**, so the UVM
-environment still belongs on EDA Playground with Riviera-PRO, exactly as the
-README plans.
+environment runs on EDA Playground — with **Xcelium**, not Riviera; see the
+19 August section at the end of this file for why.
 
 ## Two Verilator gotchas, both worked around in `scripts/run_sim.sh`
 
@@ -72,8 +73,8 @@ line + toggle + user coverage; `--coverage-user` and `--coverage-line` each
 build fine on their own, so the crash is in the toggle path. Cover properties
 are what matter here, so `run_sim.sh --coverage` passes `--coverage-user`.
 
-Code coverage (line/branch/toggle) therefore comes from Riviera-PRO, not
-locally. That is a November milestone anyway.
+Code coverage (line/branch/toggle) therefore comes from a commercial simulator
+on EDA Playground, not locally. That is a November milestone anyway.
 
 ## Cover-property status
 
@@ -136,3 +137,46 @@ previous response completes.
 for each — from ten spurious cross-transaction matches to the one genuine
 occurrence each that `sanity_tb` actually contains. That difference is the
 whole argument.
+
+---
+
+## UVM simulator — measured 19 August 2026
+
+The README originally named Aldec Riviera-PRO as the UVM simulator, on the
+assumption that a Google login was sufficient. That is wrong, and it was worth
+finding out on the 19th rather than the 27th.
+
+| Simulator (EDA Playground) | Compiles UVM | Simulates UVM |
+|---|---|---|
+| Aldec Riviera-PRO 2025.04 | **yes** — 0 errors, 0 warnings | **no** |
+| Cadence Xcelium 25.03 (CDNS-UVM-1.2) | yes | **yes** |
+
+Riviera compiles cleanly and then refuses at elaboration:
+
+```
+ELBREAD: Error: You do not have a valid license to simulate module
+"uvm_1_2.\uvm_pkg uvm_bottomup_phase \" using SystemVerilog advanced
+verification features.
+```
+
+`vlog` is licensed; `vsim` on class-based code is not. Being signed in does not
+change it — this was tested logged in. The failure is an entitlement boundary,
+not a configuration mistake, so there is nothing to fix on our side.
+
+**Xcelium is therefore the UVM simulator for this project.** Selected from the
+EDA Playground dropdown; no other change to the source.
+
+Two consequences worth carrying:
+
+- **Reproducibility.** Xcelium reports `SVSEED default: 1`, and two runs of the
+  same test produced byte-identical randomisation. Good for debugging, and the
+  reason the verification plan's bug-report template has a *seed* field — a
+  seed only means something once it is recorded. Randomised regression will
+  need seeds passed explicitly rather than relying on the default.
+- **UVM version.** Xcelium supplies its own CDNS-UVM-1.2 via `-uvmhome`, built
+  with `UVM_NO_DEPRECATED` undefined. Deprecated UVM 1.1 constructs will
+  therefore compile here and may not elsewhere. Worth avoiding them
+  deliberately rather than by luck.
+
+Local `make test` is unaffected and stays the RTL regression: Icarus and
+Verilator have no UVM support and never will for this project's purposes.

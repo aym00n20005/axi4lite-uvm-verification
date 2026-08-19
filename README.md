@@ -122,7 +122,7 @@ The October RAL model is *generated*, not hand-written — that is the point at 
 |---|---|
 | Tests passing | 58 **smoke** checks — 31 register slave, 27 memory slave — under both Icarus 13.0 and Verilator 5.050 |
 | Functional coverage | not started; cover-property baseline in [tooling notes](docs/tooling_notes.md) |
-| Code coverage | not started — needs Riviera-PRO |
+| Code coverage | not started — needs a commercial simulator |
 | Bugs found and root-caused | 1 genuine ([BUG-007](docs/bug_reports/BUG-007.md), checker cover defect); 4 injected and detected ([BUG-002](docs/bug_reports/BUG-002.md), BUG-003, v0.2 decode, write-data bypass) |
 
 **Read "tests passing" narrowly.** Those are non-UVM smoke checks from
@@ -132,7 +132,7 @@ number will be replaced by the UVM test list once it exists.
 
 ## Tools
 
-- **Simulation:** EDA Playground with Aldec Riviera-PRO (free, full UVM support, Google login is sufficient)
+- **UVM simulation:** EDA Playground with **Cadence Xcelium** (CDNS-UVM-1.2). Aldec Riviera-PRO compiles UVM there but cannot simulate it — the free entitlement excludes class-based simulation, signed in or not. Measured 19 Aug; see [tooling notes](docs/tooling_notes.md).
 - **Quick RTL checks:** Icarus Verilog / Verilator — no UVM
 - **Formal (planned, Nov):** SymbiYosys + Yosys
 - **Flow (from Sep):** Make + Python (regression, parsing, code generation), TCL for simulator control
