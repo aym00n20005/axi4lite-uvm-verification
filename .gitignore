@@ -17,6 +17,7 @@ obj_dir/
 coverage.dat
 sim/coverage.dat
 sim/cov_annotated/
+sim/playground_*.sv
 *.jou
 *.wdb
 xsim.dir/
