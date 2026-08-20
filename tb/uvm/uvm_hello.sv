@@ -160,12 +160,12 @@ endclass
 
 
 //======================================================================
-// 4. The monitor -- passive, and will share NO state with the driver
+// 4. The monitor -- passive, and shares NO state with the driver
 //
-// Right now it fabricates one item so the analysis path can be seen
-// working end to end. That is the only dishonest line in this file and
-// it is deleted on 25 Aug, when the monitor reconstructs transactions
-// from pins alone.
+// This one fabricates an item, because uvm_hello has no pins to watch.
+// The real axi_monitor (tb/agent/axi_monitor.sv, 25 Aug) reconstructs
+// from vif.monitor_cb alone and has no handle to the driver -- see the
+// header of that file for why that rule matters more than it looks.
 //======================================================================
 class axi_monitor extends uvm_component;
 
