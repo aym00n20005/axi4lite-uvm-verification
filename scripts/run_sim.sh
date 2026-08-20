@@ -24,9 +24,10 @@
 # paths with spaces are fine; only the build directory has to be moved.
 # That is what BUILD_ROOT below is for — not an arbitrary choice.
 #
-# Both RTL files are always compiled, even when only one bench runs: the
-# bind file names both slave modules, and binding to a module that is not
-# in the design is an elaboration error.
+# Both RTL files are always compiled, and both bind files included, even
+# when only one bench runs. Local builds have both slaves available, so
+# both binds resolve. The EDA Playground bundles are the case that needs
+# the binds split per slave -- see the Makefile's playground target.
 #=====================================================================
 set -euo pipefail
 
@@ -37,7 +38,8 @@ BUILD_ROOT="${BUILD_ROOT// /_}"
 
 RTL=( "$ROOT/rtl/axi4lite_reg_slave.sv" "$ROOT/rtl/axi4lite_mem_slave.sv" )
 IF="$ROOT/tb/interface/axi4lite_if.sv"
-BIND="$ROOT/tb/interface/axi4lite_checker_bind.sv"
+BIND_REG="$ROOT/tb/interface/axi4lite_reg_bind.sv"
+BIND_MEM="$ROOT/tb/interface/axi4lite_mem_bind.sv"
 
 TB_reg="$ROOT/tb/sanity_tb.sv"
 TB_mem="$ROOT/tb/sanity_mem_tb.sv"
@@ -87,7 +89,7 @@ for T in "${TARGETS[@]}"; do
             ${COVERAGE:+$COVERAGE} \
             --top-module "$TOP" \
             --Mdir "$BUILD" -o "$TOP" \
-            "${RTL[@]}" "$IF" "$BIND" "$TB"
+            "${RTL[@]}" "$IF" "$BIND_REG" "$BIND_MEM" "$TB"
         ( cd "$ROOT/sim" && "$BUILD/$TOP" ) || FAILED=1
         # Verilator drops coverage.dat in the run directory. Both benches
         # run there, so keep them apart or the second overwrites the first.

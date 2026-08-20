@@ -62,8 +62,12 @@ PLAY_hello      := tb/uvm/uvm_hello.sv
 
 # The first bundle that needs a DESIGN pane: the driver drives real pins,
 # so the interface, the DUT and the bound checker have to be there too.
+# Only the register slave and only its bind. Adding the memory slave to
+# satisfy a combined bind file elaborated it as a second, unconnected
+# top-level module with floating inputs and a checker bound to it --
+# harmless here only because ARESETn was X, which is not a guarantee.
 PLAY_smoke_DESIGN := tb/interface/axi4lite_if.sv rtl/axi4lite_reg_slave.sv \
-                     tb/interface/axi4lite_checker_bind.sv
+                     tb/interface/axi4lite_reg_bind.sv
 PLAY_smoke        := tb/agent/axi_transaction.sv tb/agent/axi_sequencer.sv \
                      tb/agent/axi_driver.sv tb/agent/axi_master_agent.sv \
                      tb/sequences/axi_seqs.sv tb/env/axi_env.sv \
@@ -90,6 +94,10 @@ playground:
 	     echo "//================ $$f ================"; cat $$f; echo ""; done; \
 	 } > $$out; \
 	 echo "wrote $$out ($$(wc -l < $$out) lines) -- TESTBENCH pane"; \
+	 if LC_ALL=C grep -qn '[^ -~\t]' $$out; then \
+	   echo "ERROR: non-ASCII in $$out -- Xcelium drops those bytes from string"; \
+	   echo "       literals (*W,NONPRT) and mangles the log. Offending lines:"; \
+	   LC_ALL=C grep -n '[^ -~\t]' $$out | head -5; exit 1; fi; \
 	 dsrcs="$(PLAY_$(PLAY)_DESIGN)"; \
 	 if [ -n "$$dsrcs" ]; then \
 	   dout=sim/playground_$(PLAY)_design.sv; \

@@ -15,7 +15,7 @@ sim/*.fst
 sim/*.log
 obj_dir/
 coverage.dat
-sim/coverage.dat
+sim/*.dat
 sim/cov_annotated/
 sim/playground_*.sv
 *.jou
