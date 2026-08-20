@@ -16,6 +16,7 @@ class axi_master_agent extends uvm_agent;
 
     axi_sequencer sqr;
     axi_driver    drv;
+    axi_monitor   mon;
 
     function new(string name, uvm_component parent);
         super.new(name, parent);
@@ -27,6 +28,9 @@ class axi_master_agent extends uvm_agent;
         if (!uvm_config_db #(uvm_active_passive_enum)::get(this, "", "is_active", is_active))
             `uvm_info(get_type_name(),
                       "no is_active in config_db -- defaulting to UVM_ACTIVE", UVM_MEDIUM)
+
+        // Always. The passive half is the half that is always present.
+        mon = axi_monitor::type_id::create("mon", this);
 
         if (is_active == UVM_ACTIVE) begin
             sqr = axi_sequencer::type_id::create("sqr", this);

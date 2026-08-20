@@ -25,6 +25,12 @@
 
 virtual class axi_base_seq extends uvm_sequence #(axi_transaction);
 
+    // What this sequence ISSUED. The monitor independently counts what it
+    // SAW on the pins. Comparing the two is the check that the monitor is
+    // reconstructing rather than echoing -- two counts with no shared path.
+    int unsigned issued_writes = 0;
+    int unsigned issued_reads  = 0;
+
     function new(string name = "axi_base_seq");
         super.new(name);
     endfunction
@@ -50,6 +56,7 @@ virtual class axi_base_seq extends uvm_sequence #(axi_transaction);
             `uvm_error(get_type_name(), $sformatf("write randomize failed addr=0x%08h", addr))
         finish_item(t);
         wait (t.completed == 1'b1);
+        issued_writes++;
         resp = t.resp;
     endtask
 
@@ -66,6 +73,7 @@ virtual class axi_base_seq extends uvm_sequence #(axi_transaction);
             `uvm_error(get_type_name(), $sformatf("read randomize failed addr=0x%08h", addr))
         finish_item(t);
         wait (t.completed == 1'b1);
+        issued_reads++;
         data = t.rdata;
         resp = t.resp;
     endtask

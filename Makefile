@@ -69,8 +69,9 @@ PLAY_hello      := tb/uvm/uvm_hello.sv
 PLAY_smoke_DESIGN := tb/interface/axi4lite_if.sv rtl/axi4lite_reg_slave.sv \
                      tb/interface/axi4lite_reg_bind.sv
 PLAY_smoke        := tb/agent/axi_transaction.sv tb/agent/axi_sequencer.sv \
-                     tb/agent/axi_driver.sv tb/agent/axi_master_agent.sv \
-                     tb/sequences/axi_seqs.sv tb/env/axi_env.sv \
+                     tb/agent/axi_driver.sv tb/agent/axi_monitor.sv \
+                     tb/agent/axi_master_agent.sv tb/sequences/axi_seqs.sv \
+                     tb/env/axi_observer.sv tb/env/axi_env.sv \
                      tb/tests/axi_smoke_test.sv tb/tests/tb_top.sv
 
 playground:
