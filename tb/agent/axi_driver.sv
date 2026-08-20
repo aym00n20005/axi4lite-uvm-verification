@@ -3,7 +3,7 @@
 //
 // Five independent per-channel threads, not a sequential FSM.
 //
-// This is the component the whole project is shaped around. Spec §3
+// This is the component the whole project is shaped around. Spec section 3
 // rule 4 makes AW and W independent channels; a driver that drives them
 // in lockstep can never produce W-before-AW, so a slave that only works
 // when AW arrives first would pass every test ever written against it.
@@ -15,7 +15,7 @@
 //
 //   item_done() fires on ACCEPTANCE, not completion. The sequence gets
 //   control back as soon as a channel slot is claimed, so a read can be
-//   in flight alongside a write -- which spec §1 permits and which F24
+//   in flight alongside a write -- which spec section 1 permits and which F24
 //   (STATUS.busy) requires in order to be observable at all.
 //
 //   Two INDEPENDENT slots, one write and one read. dispatch() blocks on
@@ -29,14 +29,14 @@ class axi_driver extends uvm_driver #(axi_transaction);
 
     virtual axi4lite_if vif;
 
-    // Spec §1: one write and one read may be in flight simultaneously.
+    // Spec section 1: one write and one read may be in flight simultaneously.
     // Two semaphores rather than one is the whole of that requirement.
     semaphore write_slot;
     semaphore read_slot;
 
     // Per-channel work queues. The same transaction handle is handed to
     // several threads: AW reads addr, W reads data/strb, B writes resp
-    // back. One object, three channels -- see the design note §1.
+    // back. One object, three channels -- see the design note section 1.
     mailbox #(axi_transaction) aw_q;
     mailbox #(axi_transaction) w_q;
     mailbox #(axi_transaction) b_q;
@@ -64,7 +64,7 @@ class axi_driver extends uvm_driver #(axi_transaction);
     task run_phase(uvm_phase phase);
         drive_idle();
 
-        // Spec §1: the testbench deasserts ARESETn on an active edge.
+        // Spec section 1: the testbench deasserts ARESETn on an active edge.
         // `wait` rather than @(posedge) so an already-released reset does
         // not hang the driver forever.
         wait (vif.ARESETn === 1'b1);
@@ -142,7 +142,7 @@ class axi_driver extends uvm_driver #(axi_transaction);
     // by two independent threads rather than by a mode switch.
     //
     // VALID is held until READY is SAMPLED high, never dropped early:
-    // spec §3 rule 1, and the requirement a_awvalid_stable enforces.
+    // spec section 3 rule 1, and the requirement a_awvalid_stable enforces.
     // BUG-001 is the deliberate violation of exactly this loop.
     //==================================================================
     task aw_channel();

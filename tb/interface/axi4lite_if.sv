@@ -1,11 +1,11 @@
 //======================================================================
-// axi4lite_if.sv  —  v0.2
+// axi4lite_if.sv  --  v0.2
 // AXI4-Lite interface + bindable protocol checker
 //
 // Matches docs/dut_spec.md v0.2. Assumes:
 //   - one outstanding write, one outstanding read
 //   - registered slave: BVALID/RVALID assert no earlier than the cycle
-//     AFTER the accepts that enable them (spec §3, frozen decision)
+//     AFTER the accepts that enable them (spec section 3, frozen decision)
 //
 // READ THIS BEFORE USING IT. In particular understand:
 //   - why VALID-stability uses |=> and not |->
@@ -100,11 +100,11 @@ endinterface : axi4lite_if
 module axi4lite_protocol_checker #(
     parameter int ADDR_WIDTH  = 32,
     parameter int DATA_WIDTH  = 32,
-    // Leave at 1 for BOTH slaves. Spec §6 requires the memory slave to return
+    // Leave at 1 for BOTH slaves. Spec section 6 requires the memory slave to return
     // SLVERR on a misaligned access just as the register slave does, so there
     // is no instance where disabling this check is correct. (v0.2 of this file
     // recommended 0 for the memory slave; that would have switched off a check
-    // the spec demands. See dut_spec.md §10.)
+    // the spec demands. See dut_spec.md section 10.)
     parameter bit CHECK_ALIGN = 1
 ) (
     input logic                    ACLK,
@@ -139,7 +139,7 @@ module axi4lite_protocol_checker #(
     // ar_pend           : AR accepted, R not yet completed
     //
     // Cleared on the response handshake, but re-armed in the same cycle
-    // if a new accept happens simultaneously — otherwise a back-to-back
+    // if a new accept happens simultaneously -- otherwise a back-to-back
     // transaction would be missed.
     //==================================================================
     logic aw_pend, w_pend, ar_pend;
@@ -209,7 +209,7 @@ module axi4lite_protocol_checker #(
         else $error("BRESP changed while BVALID held");
 
     //==================================================================
-    // 3. Response ordering — spec §3 rules 5 and 6.
+    // 3. Response ordering -- spec section 3 rules 5 and 6.
     //
     // These trigger on VALID alone, NOT on VALID && READY.
     //
@@ -227,7 +227,7 @@ module axi4lite_protocol_checker #(
         else $error("RVALID asserted before AR was accepted");
 
     //==================================================================
-    // 4. Responses must not wait for their READY — spec §3 rule 7.
+    // 4. Responses must not wait for their READY -- spec section 3 rule 7.
     //    Once both write halves are accepted, B must appear within a
     //    bounded number of cycles regardless of BREADY.
     //    Bound is generous; tighten it once the DUT latency is known.
@@ -241,7 +241,7 @@ module axi4lite_protocol_checker #(
         else $error("RVALID did not appear after AR accepted");
 
     //==================================================================
-    // 5. Single outstanding — spec §1.
+    // 5. Single outstanding -- spec section 1.
     //    No further AW or W accepted while a complete write awaits its
     //    response, unless that response completes in the same cycle.
     //==================================================================
@@ -254,7 +254,7 @@ module axi4lite_protocol_checker #(
         else $error("Second read accepted while an R response was pending");
 
     //==================================================================
-    // 6. Alignment — spec §4. Misaligned must return SLVERR, never OKAY.
+    // 6. Alignment -- spec section 4. Misaligned must return SLVERR, never OKAY.
     //==================================================================
     if (CHECK_ALIGN) begin : g_align
         a_misaligned_write_errors : assert property
@@ -268,7 +268,7 @@ module axi4lite_protocol_checker #(
 
     //==================================================================
     // 7. No X/Z on control signals out of reset.
-    //    Catches uninitialised registers early — otherwise they surface
+    //    Catches uninitialised registers early -- otherwise they surface
     //    much later as baffling scoreboard mismatches.
     //==================================================================
     a_no_x_valids : assert property
@@ -295,7 +295,7 @@ module axi4lite_protocol_checker #(
     // on a bus that is never stressed proves nothing. c_w_before_aw in
     // particular is the check that your driver is genuinely running
     // independent per-channel threads rather than lockstepping AW and W
-    // — if it stays uncovered, none of your protocol testing is real.
+    // -- if it stays uncovered, none of your protocol testing is real.
     //==================================================================
     // The ordering covers MUST be qualified with the pending-flags.
     //
@@ -304,7 +304,7 @@ module axi4lite_protocol_checker #(
     // followed eventually by any AW accept matches, and that happens in
     // any multi-transaction run whatever the ordering inside each one.
     // The cover point would then read as covered while proving nothing
-    // about driver independence — which is the entire reason the
+    // about driver independence -- which is the entire reason the
     // verification plan lists it.
     //
     // Qualifying on the flags pins the match inside a SINGLE transaction:

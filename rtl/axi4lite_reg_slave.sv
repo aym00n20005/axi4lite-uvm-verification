@@ -1,15 +1,15 @@
 //======================================================================
-// axi4lite_reg_slave.sv  —  v0.3
+// axi4lite_reg_slave.sv  --  v0.3
 //
-// AXI4-Lite register-file slave.  Implements docs/dut_spec.md v0.3 §5,
-// with the error precedence of §4 and the registered-response timing
-// frozen in §3.
+// AXI4-Lite register-file slave.  Implements docs/dut_spec.md v0.3 section 5,
+// with the error precedence of section 4 and the registered-response timing
+// frozen in section 3.
 //
 // Architecture rationale lives in docs/reg_slave_architecture.md.
 // The three things worth understanding before reading the code:
 //
 //   1. AW and W have INDEPENDENT accept-flags, not a shared state
-//      machine.  Spec §3 rule 4 permits W before AW, and a sequential
+//      machine.  Spec section 3 rule 4 permits W before AW, and a sequential
 //      FSM could never accept that ordering.
 //
 //   2. do_write is combinational and true on the cycle the LATER half
@@ -18,7 +18,7 @@
 //      a_bvalid_not_early and a_b_not_stalled jointly require.
 //
 //   3. Errors are a strict priority cascade, so exactly one error is
-//      ever true and exactly one INT_STATUS bit is ever set (§4).
+//      ever true and exactly one INT_STATUS bit is ever set (section 4).
 //======================================================================
 
 `timescale 1ns/1ps
@@ -65,7 +65,7 @@ module axi4lite_reg_slave #(
     localparam logic [1:0] RESP_OKAY   = 2'b00;
     localparam logic [1:0] RESP_SLVERR = 2'b10;
 
-    // Register indices — ADDR[4:2], spec §5
+    // Register indices -- ADDR[4:2], spec section 5
     localparam logic [2:0] R_CTRL       = 3'd0;   // 0x00
     localparam logic [2:0] R_STATUS     = 3'd1;   // 0x04
     localparam logic [2:0] R_CONFIG     = 3'd2;   // 0x08
@@ -96,8 +96,8 @@ module axi4lite_reg_slave #(
     logic [1:0]              rresp_q;
     logic [DATA_WIDTH-1:0]   rdata_q;
 
-    // Register bank — stored at implemented width only, so reserved bits
-    // physically cannot retain data (spec §5, feature F13).
+    // Register bank -- stored at implemented width only, so reserved bits
+    // physically cannot retain data (spec section 5, feature F13).
     logic                    ctrl_enable;    // CTRL[0]
     logic [7:0]              config_q;       // CONFIG[7:0]
     logic [3:0]              int_enable_q;   // INT_ENABLE[3:0]
@@ -149,10 +149,10 @@ module axi4lite_reg_slave #(
     wire [STRB_WIDTH-1:0] wr_strb = w_captured  ? wstrb_q  : WSTRB;
 
     //==================================================================
-    // Decode and error precedence — spec §4, §5
+    // Decode and error precedence -- spec section 4, section 5
     //
     // Note the decode is on the FULL offset, not ADDR[7:2].  Offset
-    // 0x100 must return SLVERR, not alias onto CTRL.  See dut_spec §10
+    // 0x100 must return SLVERR, not alias onto CTRL.  See dut_spec section 10
     // revision 1.
     //
     // The cascade is strict, so exactly one err_* is ever true.
@@ -175,15 +175,15 @@ module axi4lite_reg_slave #(
     wire rd_error        = rd_err_misalign || rd_err_unimpl;
 
     // A register write that actually takes effect.  Every error path is
-    // excluded here, which is how spec §4's "no error condition modifies
-    // any register or memory state" is enforced — in one place.
+    // excluded here, which is how spec section 4's "no error condition modifies
+    // any register or memory state" is enforced -- in one place.
     wire reg_write = do_write && !wr_error;
 
     wire reset_stats_pulse = reg_write && (wr_idx == R_CTRL)       && wr_data[1];
     wire w1c_write         = reg_write && (wr_idx == R_INT_STATUS);
 
     //==================================================================
-    // INT_STATUS event sources — spec §5
+    // INT_STATUS event sources -- spec section 5
     //
     // Read and write paths can each raise an event in the same cycle, so
     // the misaligned and unimplemented terms are OR-ed across both.
@@ -197,7 +197,7 @@ module axi4lite_reg_slave #(
     wire [3:0] int_set = {ev_overflow, ev_strobe, ev_misalign, ev_unimpl};
 
     //==================================================================
-    // STATUS.busy — write path only, spec §5.
+    // STATUS.busy -- write path only, spec section 5.
     //
     // If it covered reads, a read of STATUS would itself be an in-flight
     // read and the bit could never be observed as 0.
@@ -209,8 +209,8 @@ module axi4lite_reg_slave #(
     // storage element.  Both work; masking on read keeps the stored
     // width honest and makes F13 one obvious line per register.
     //
-    // CTRL[1] (reset_stats) reads 0 unconditionally — it is a command
-    // bit, not state.  Spec §5, clarified in v0.3.
+    // CTRL[1] (reset_stats) reads 0 unconditionally -- it is a command
+    // bit, not state.  Spec section 5, clarified in v0.3.
     //==================================================================
     logic [31:0] rd_mux;
 
@@ -270,7 +270,7 @@ module axi4lite_reg_slave #(
     // Read channel sequencing.
     //
     // ARREADY = !rvalid_q gives single-outstanding for free, and returns
-    // high one cycle after r_done — which is exactly the back-to-back
+    // high one cycle after r_done -- which is exactly the back-to-back
     // shape c_b2b_read covers.
     //==================================================================
     always_ff @(posedge ACLK or negedge ARESETn) begin
@@ -293,13 +293,13 @@ module axi4lite_reg_slave #(
     // Register bank.
     //
     // STATUS, COUNTER and ID are RO: they fall through to the default
-    // and are silently discarded, with BRESP already OKAY (spec §5).
+    // and are silently discarded, with BRESP already OKAY (spec section 5).
     // INT_STATUS is W1C and is handled in its own block below.
     //==================================================================
     always_ff @(posedge ACLK or negedge ARESETn) begin
         if (!ARESETn) begin
             ctrl_enable  <= 1'b0;
-            config_q     <= 8'hFF;      // reset value 0x0000_00FF, spec §5
+            config_q     <= 8'hFF;      // reset value 0x0000_00FF, spec section 5
             int_enable_q <= 4'h0;
             scratch_q    <= 32'h0;
         end else if (reg_write) begin
@@ -314,7 +314,7 @@ module axi4lite_reg_slave #(
     end
 
     //==================================================================
-    // COUNTER — 16 bits, spec §5.
+    // COUNTER -- 16 bits, spec section 5.
     //
     // reset_stats takes priority over increment: if both apply on the
     // same cycle the result is 0.  The branch ORDER is the spec rule.
@@ -326,9 +326,9 @@ module axi4lite_reg_slave #(
     end
 
     //==================================================================
-    // INT_STATUS — W1C with real event sources, spec §5.
+    // INT_STATUS -- W1C with real event sources, spec section 5.
     //
-    // "Set beats simultaneous clear — the event must not be lost."  That
+    // "Set beats simultaneous clear -- the event must not be lost."  That
     // sentence IS the if/else-if ordering below.  Swapping the branches
     // is a plausible RTL defect and is what directed test F23 exists to
     // catch.
@@ -345,7 +345,7 @@ module axi4lite_reg_slave #(
     end
 
     //==================================================================
-    // STATUS.error — spec §5, clarified in v0.3.
+    // STATUS.error -- spec section 5, clarified in v0.3.
     //
     // Updated by every completed register transaction EXCEPT a read of
     // STATUS itself, which is transparent.  A misaligned access that
@@ -369,7 +369,7 @@ module axi4lite_reg_slave #(
 
     //==================================================================
     // Deliberately unused.  AWPROT/ARPROT are accepted and ignored
-    // (spec §2), and only the low 12 address bits are decoded — the
+    // (spec section 2), and only the low 12 address bits are decoded -- the
     // interconnect owns everything above that.  Named explicitly so
     // lint stays clean and the omission reads as intent, not oversight.
     //==================================================================

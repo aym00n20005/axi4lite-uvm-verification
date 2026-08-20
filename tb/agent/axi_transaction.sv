@@ -12,7 +12,7 @@
 
 typedef enum bit { AXI_READ, AXI_WRITE } axi_kind_e;
 
-// The five values are exactly cg_address_region's five bins (vplan §5),
+// The five values are exactly cg_address_region's five bins (vplan section 5),
 // so coverage samples this field rather than re-deriving the decode.
 typedef enum {
     REGION_REG_IMPL,        // 0x0000_0000 - 0x0000_001F  implemented registers
@@ -28,7 +28,7 @@ typedef enum { ORDER_AW_FIRST, ORDER_W_FIRST, ORDER_SAME_CYCLE } axi_order_e;
 class axi_transaction extends uvm_sequence_item;
 
     //------------------------------------------------------------------
-    // Stimulus — randomised
+    // Stimulus -- randomised
     //------------------------------------------------------------------
     rand axi_kind_e   kind;
     rand axi_region_e region;
@@ -47,7 +47,7 @@ class axi_transaction extends uvm_sequence_item;
     rand int unsigned r_ready_delay;
 
     //------------------------------------------------------------------
-    // Results — NOT rand, and excluded from compare.
+    // Results -- NOT rand, and excluded from compare.
     //
     // Filled in by the driver from the B/R channels, and independently
     // by the monitor from the pins. Randomising a field the DUT is meant
@@ -138,7 +138,7 @@ class axi_transaction extends uvm_sequence_item;
     }
 
     // 4'b0000 deserves its own weight: it is a legal OKAY no-op on the
-    // memory slave (spec §6) and an SLVERR on the register slave (§5).
+    // memory slave (spec section 6) and an SLVERR on the register slave (section 5).
     // Same pattern, opposite meaning -- worth hitting often.
     constraint c_strb_dist {
         soft (kind == AXI_WRITE) -> strb dist {
@@ -149,7 +149,7 @@ class axi_transaction extends uvm_sequence_item;
     }
 
     // A partial-strobe write to an implemented register is an ERROR
-    // (spec §5, F16) whereas on memory it is the normal case (§6, F15).
+    // (spec section 5, F16) whereas on memory it is the normal case (section 6, F15).
     // Without this correlation, register writes are partial ~45% of the
     // time and F16 alone contributes ~8% of all traffic -- far more than
     // a corner case deserves. 20% of register writes still leaves ~20

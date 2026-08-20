@@ -1,7 +1,7 @@
 //======================================================================
-// sanity_tb.sv  —  v0.3
+// sanity_tb.sv  --  v0.3
 //
-// Crude, non-UVM testbench for axi4lite_reg_slave.  Spec §8: "Its only
+// Crude, non-UVM testbench for axi4lite_reg_slave.  Spec section 8: "Its only
 // job is proving the RTL breathes before UVM goes on top.  Deleted later."
 //
 // This is NOT verification.  There is no scoreboard, no randomisation, no
@@ -13,7 +13,7 @@
 //     driven at edge T is stable for the whole of cycle T+1
 //   - the TB samples DUT outputs at a posedge, reading the value that was
 //     stable during the preceding cycle
-//   - ARESETn deasserts on an active clock edge, per spec §1's reset
+//   - ARESETn deasserts on an active clock edge, per spec section 1's reset
 //     contract, which is why the DUT needs no reset synchroniser
 //
 // BREADY and RREADY are tied high throughout.  Backpressure is a UVM-era
@@ -28,7 +28,7 @@ module sanity_tb;
     localparam logic [1:0] RESP_OKAY   = 2'b00;
     localparam logic [1:0] RESP_SLVERR = 2'b10;
 
-    // Register offsets — spec §5
+    // Register offsets -- spec section 5
     localparam logic [31:0] A_CTRL       = 32'h0000_0000;
     localparam logic [31:0] A_STATUS     = 32'h0000_0004;
     localparam logic [31:0] A_CONFIG     = 32'h0000_0008;
@@ -86,7 +86,7 @@ module sanity_tb;
 
     //==================================================================
     // Per-channel drivers.  Separate tasks, driven from separate fork
-    // branches, so AW and W are genuinely independent — spec §3 rule 4.
+    // branches, so AW and W are genuinely independent -- spec section 3 rule 4.
     // A single sequential task could never produce W-before-AW.
     //==================================================================
     task automatic drive_aw(input logic [31:0] addr);
@@ -148,7 +148,7 @@ module sanity_tb;
 
     //==================================================================
     // Transactions.  aw_delay / w_delay let a test choose the ordering:
-    //   (0,0) same cycle · (0,n) AW first · (n,0) W first
+    //   (0,0) same cycle * (0,n) AW first * (n,0) W first
     //==================================================================
     task automatic axi_write(input logic [31:0] addr,
                              input logic [31:0] data,
@@ -184,16 +184,16 @@ module sanity_tb;
         RREADY  = 1'b1;
 
         repeat (5) @(posedge ACLK);
-        ARESETn <= 1'b1;                 // deassert on an active edge, spec §1
+        ARESETn <= 1'b1;                 // deassert on an active edge, spec section 1
         repeat (2) @(posedge ACLK);
 
         $display("");
         $display("========================================================================");
-        $display(" sanity_tb — axi4lite_reg_slave, spec v0.3");
+        $display(" sanity_tb -- axi4lite_reg_slave, spec v0.3");
         $display("========================================================================");
 
         //--------------------------------------------------------------
-        $display("\n-- reset values and constants (spec §5) --");
+        $display("\n-- reset values and constants (spec section 5) --");
 
         axi_read(A_ID);
         check("ID reads 0xDEADBEEF",              r_data, 32'hDEAD_BEEF);
@@ -215,7 +215,7 @@ module sanity_tb;
 
         //--------------------------------------------------------------
         // Both separated orderings (F03).  W-before-AW is the one a
-        // lockstep driver can never produce, spec §3 rule 4.  AW-before-W
+        // lockstep driver can never produce, spec section 3 rule 4.  AW-before-W
         // matters too: it is the only ordering in which a slave can
         // assert BVALID after AW alone, which is BUG-002.
         $display("\n-- W accepted three cycles BEFORE AW --");
@@ -241,7 +241,7 @@ module sanity_tb;
         check("CONFIG masks to 0x000000FF",       r_data, 32'h0000_00FF);
 
         //--------------------------------------------------------------
-        $display("\n-- writes to RO registers: OKAY, discarded (spec §5) --");
+        $display("\n-- writes to RO registers: OKAY, discarded (spec section 5) --");
 
         axi_write(A_ID, 32'h0000_0000, 4'b1111, 0, 0);
         check("RO write returns OKAY",       {30'b0, b_resp}, {30'b0, RESP_OKAY});
@@ -249,7 +249,7 @@ module sanity_tb;
         check("RO register unchanged",            r_data, 32'hDEAD_BEEF);
 
         //--------------------------------------------------------------
-        // Three things in one transaction, per spec §5.
+        // Three things in one transaction, per spec section 5.
         $display("\n-- partial-strobe register write (F16) --");
 
         axi_write(A_SCRATCH, 32'hAAAA_AAAA, 4'b0011, 0, 0);
@@ -282,9 +282,9 @@ module sanity_tb;
 
         //--------------------------------------------------------------
         // Contrast with the memory slave, where 4'b0000 is a legal no-op
-        // returning OKAY (spec §6).  On the register slave it is an
-        // error like any other partial strobe (spec §5).
-        $display("\n-- zero strobe on a register write (spec §5) --");
+        // returning OKAY (spec section 6).  On the register slave it is an
+        // error like any other partial strobe (spec section 5).
+        $display("\n-- zero strobe on a register write (spec section 5) --");
 
         axi_write(A_SCRATCH, 32'hFFFF_FFFF, 4'b0000, 0, 0);
         check("WSTRB=0000 -> SLVERR",        {30'b0, b_resp}, {30'b0, RESP_SLVERR});
@@ -292,7 +292,7 @@ module sanity_tb;
         check("SCRATCH unchanged by 0-strobe",    r_data, 32'h0F0F_0F0F);
 
         //--------------------------------------------------------------
-        $display("\n-- W1C semantics (F12, spec §5 example) --");
+        $display("\n-- W1C semantics (F12, spec section 5 example) --");
 
         axi_read(A_INT_STATUS);
         check("INT_STATUS accumulated 0b0111",    r_data, 32'h0000_0007);
@@ -317,7 +317,7 @@ module sanity_tb;
         check("reset_stats clears COUNTER",       r_data, 32'h0000_0000);
 
         // enable and reset_stats together: counter clears, enable survives,
-        // and reset_stats itself reads back 0 (spec §5, clarified in v0.3).
+        // and reset_stats itself reads back 0 (spec section 5, clarified in v0.3).
         axi_write(A_CTRL, 32'h0000_0003, 4'b1111, 0, 0);
         axi_read(A_CTRL);
         check("reset_stats reads 0, enable set",  r_data, 32'h0000_0001);
@@ -342,7 +342,7 @@ module sanity_tb;
     //==================================================================
     initial begin
         #200000;
-        $display("\n  TIMEOUT — a handshake never completed\n");
+        $display("\n  TIMEOUT -- a handshake never completed\n");
         $fatal(1, "sanity_tb timeout");
     end
 

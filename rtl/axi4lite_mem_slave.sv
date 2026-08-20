@@ -1,11 +1,11 @@
 //======================================================================
-// axi4lite_mem_slave.sv  —  v0.3
+// axi4lite_mem_slave.sv  --  v0.3
 //
-// AXI4-Lite memory slave.  Implements docs/dut_spec.md v0.3 §6.
+// AXI4-Lite memory slave.  Implements docs/dut_spec.md v0.3 section 6.
 // Base 0x0000_1000, 1 KB = 256 words, word selected by ADDR[9:2].
 //
 // The AXI handshake skeleton is deliberately identical to
-// axi4lite_reg_slave.sv — same accept-flags, same do_write, same bypass
+// axi4lite_reg_slave.sv -- same accept-flags, same do_write, same bypass
 // muxes, same registered-response timing.  That duplication is chosen
 // over a shared base module: each slave stays readable on its own, and
 // the protocol logic is the part you want to be able to point at in
@@ -15,11 +15,11 @@
 // What this slave does NOT have, and why that matters:
 //
 //   - no INT_STATUS, no STATUS, no COUNTER.  A memory slave has no
-//     side effects.  Spec §6: errors are reported on the bus only.
+//     side effects.  Spec section 6: errors are reported on the bus only.
 //   - no unimplemented-offset case.  All 256 words are implemented, and
 //     everything above 0x13FF is caught by the interconnect as DECERR
-//     before it ever reaches here (spec §6).
-//   - no reset on the memory array.  Spec §6: "reset does not clear
+//     before it ever reaches here (spec section 6).
+//   - no reset on the memory array.  Spec section 6: "reset does not clear
 //     memory contents.  This matches real RAM."
 //
 // WSTRB is honoured here, where the register slave rejects any strobe
@@ -86,12 +86,12 @@ module axi4lite_mem_slave #(
     logic [1:0]            rresp_q;
     logic [DATA_WIDTH-1:0] rdata_q;
 
-    // The memory itself.  Deliberately NOT reset — see the always_ff
+    // The memory itself.  Deliberately NOT reset -- see the always_ff
     // below.
     logic [DATA_WIDTH-1:0] mem [0:NUM_WORDS-1];
 
     //==================================================================
-    // Handshakes — identical in shape to the register slave
+    // Handshakes -- identical in shape to the register slave
     //==================================================================
     assign AWREADY = !aw_captured && !bvalid_q;
     assign WREADY  = !w_captured  && !bvalid_q;
@@ -116,12 +116,12 @@ module axi4lite_mem_slave #(
     //==================================================================
     // Decode.
     //
-    // Misalignment is the ONLY error this slave can raise (spec §6).
+    // Misalignment is the ONLY error this slave can raise (spec section 6).
     // There is no offset check, because every word in the region is
     // implemented and the interconnect terminates anything outside it
     // with DECERR before it arrives.
     //
-    // Standalone — before the interconnect exists — an access to 0x1400
+    // Standalone -- before the interconnect exists -- an access to 0x1400
     // WILL alias onto word 0 here.  That is not a defect in this module;
     // it is precisely the responsibility BUG-005 injects a fault into,
     // and the reason that bug lives in the interconnect rather than here.
@@ -176,18 +176,18 @@ module axi4lite_mem_slave #(
     // The memory array.
     //
     // No reset branch, and no `negedge ARESETn` in the sensitivity list.
-    // Spec §6: reset does not clear memory contents.  This is stated in
+    // Spec section 6: reset does not clear memory contents.  This is stated in
     // the spec precisely so that surviving data is not mistaken for a
-    // bug during scoreboard bring-up — and the absence of a reset here
+    // bug during scoreboard bring-up -- and the absence of a reset here
     // is what implements it.
     //
     // Byte-lane masking is the whole job.  Note that WSTRB == 4'b0000
     // needs NO special case: every lane is simply disabled, nothing is
     // written, and BRESP is already OKAY because misalignment is the
-    // only error.  Spec §6's "legal no-op returning OKAY" is emergent
-    // from the loop rather than coded as an exception — which is the
+    // only error.  Spec section 6's "legal no-op returning OKAY" is emergent
+    // from the loop rather than coded as an exception -- which is the
     // opposite of the register slave, where the same pattern is an
-    // explicit error (spec §5).
+    // explicit error (spec section 5).
     //==================================================================
     always_ff @(posedge ACLK) begin
         if (mem_write) begin
@@ -201,7 +201,7 @@ module axi4lite_mem_slave #(
     // Read channel sequencing.
     //
     // Reads return the full 32-bit word regardless of WSTRB or anything
-    // else (spec §6).  RDATA is zeroed on an error response, per spec §4.
+    // else (spec section 6).  RDATA is zeroed on an error response, per spec section 4.
     //==================================================================
     always_ff @(posedge ACLK or negedge ARESETn) begin
         if (!ARESETn) begin
@@ -221,7 +221,7 @@ module axi4lite_mem_slave #(
 
     //==================================================================
     // Deliberately unused.  AWPROT/ARPROT are accepted and ignored
-    // (spec §2); the address bits above the 1 KB region belong to the
+    // (spec section 2); the address bits above the 1 KB region belong to the
     // interconnect, not to this slave.
     //==================================================================
     wire _unused_ok = &{1'b0,

@@ -1,5 +1,5 @@
 //======================================================================
-// axi_seqs.sv  —  sequences
+// axi_seqs.sv  --  sequences
 //
 // item_done() fires on acceptance, so finish_item() returns BEFORE the
 // transaction has completed on the bus. A sequence that needs the result
@@ -9,12 +9,12 @@
 //     wait (t.completed == 1'b1);
 //
 // That is deliberate. Blocking inside finish_item would serialise reads
-// behind writes and make F24 unobservable -- see docs/uvm_agent_design.md §2.
+// behind writes and make F24 unobservable -- see docs/uvm_agent_design.md section 2.
 // The formal alternative (put_response / get_response) arrives with the
 // scoreboard; this is the same information with less plumbing.
 //======================================================================
 
-// Register offsets, spec §5
+// Register offsets, spec section 5
 `define A_CTRL       32'h0000_0000
 `define A_STATUS     32'h0000_0004
 `define A_CONFIG     32'h0000_0008
@@ -107,7 +107,7 @@ class axi_smoke_seq extends axi_base_seq;
         bit [31:0] d;
         bit [1:0]  r;
 
-        `uvm_info("SMOKE", "---- constants and reset values (spec §5) ----", UVM_LOW)
+        `uvm_info("SMOKE", "---- constants and reset values (spec section 5) ----", UVM_LOW)
         read(`A_ID, d, r);
         check("ID reads 0xDEADBEEF",        d, 32'hDEAD_BEEF);
         check("ID response OKAY",  {30'b0, r}, 32'h0);

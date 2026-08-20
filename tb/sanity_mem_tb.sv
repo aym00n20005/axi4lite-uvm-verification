@@ -1,8 +1,8 @@
 //======================================================================
-// sanity_mem_tb.sv  —  v0.3
+// sanity_mem_tb.sv  --  v0.3
 //
 // Crude, non-UVM smoke bench for axi4lite_mem_slave.  Companion to
-// sanity_tb.sv; spec §8, deleted once UVM is in place.
+// sanity_tb.sv; spec section 8, deleted once UVM is in place.
 //
 // The driver tasks are duplicated from sanity_tb.sv rather than shared.
 // That is deliberate for a throwaway bench: each file runs standalone
@@ -15,7 +15,7 @@
 //   - WSTRB == 4'b0000 is a legal OKAY no-op, not an error
 //   - reset does not clear the array
 //
-// The last one is the reason spec §6 states it explicitly: surviving
+// The last one is the reason spec section 6 states it explicitly: surviving
 // data after reset looks exactly like a bug until you know it is
 // required.
 //======================================================================
@@ -136,7 +136,7 @@ module sanity_mem_tb;
         join
     endtask
 
-    // Async assert, synchronous deassert on an active edge — spec §1.
+    // Async assert, synchronous deassert on an active edge -- spec section 1.
     task automatic pulse_reset();
         ARESETn <= 1'b0;
         repeat (3) @(posedge ACLK);
@@ -164,7 +164,7 @@ module sanity_mem_tb;
 
         $display("");
         $display("========================================================================");
-        $display(" sanity_mem_tb — axi4lite_mem_slave, spec v0.3 §6");
+        $display(" sanity_mem_tb -- axi4lite_mem_slave, spec v0.3 section 6");
         $display("========================================================================");
 
         //--------------------------------------------------------------
@@ -219,8 +219,8 @@ module sanity_mem_tb;
 
         //--------------------------------------------------------------
         // The contrast that matters.  Identical stimulus on the register
-        // slave returns SLVERR and sets INT_STATUS[2] (spec §5).
-        $display("\n-- WSTRB=0000 is a legal no-op here (spec §6) --");
+        // slave returns SLVERR and sets INT_STATUS[2] (spec section 5).
+        $display("\n-- WSTRB=0000 is a legal no-op here (spec section 6) --");
 
         axi_write(W005, 32'hFFFF_FFFF, 4'b0000, 0, 0);
         check("zero strobe returns OKAY",    {30'b0, b_resp}, {30'b0, RESP_OKAY});
@@ -253,11 +253,11 @@ module sanity_mem_tb;
         check("AW-before-W data landed",          r_data, 32'hF0F0_F0F0);
 
         //--------------------------------------------------------------
-        // Spec §6: "Reset does not clear memory contents.  This matches
+        // Spec section 6: "Reset does not clear memory contents.  This matches
         // real RAM and is stated explicitly so it isn't mistaken for a
         // bug during scoreboard bring-up."  Asserting it here means the
         // requirement is tested rather than merely written down.
-        $display("\n-- reset does NOT clear the array (spec §6) --");
+        $display("\n-- reset does NOT clear the array (spec section 6) --");
 
         pulse_reset();
 
@@ -290,7 +290,7 @@ module sanity_mem_tb;
 
     initial begin
         #200000;
-        $display("\n  TIMEOUT — a handshake never completed\n");
+        $display("\n  TIMEOUT -- a handshake never completed\n");
         $fatal(1, "sanity_mem_tb timeout");
     end
 
