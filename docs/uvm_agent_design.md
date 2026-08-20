@@ -180,3 +180,65 @@ drift in the defaults, not deliberate steering.
 are against all items rather than writes. Harmless in the smoke test, and it
 disappears in October: the real covergroup samples on write transactions, so
 reads never enter it.
+
+---
+
+## 7. The monitor, and how its independence is checked
+
+**20 August 2026.** Xcelium 25.03, UVM 1.2. Clean on the first run:
+17/17 functional checks, 0 errors, 0 warnings, 0 fatals.
+
+```
+issued 6 writes / 10 reads | monitor saw 6 / 10 | observer got 6 / 10
+```
+
+### The rule, and the one line that breaks it
+
+Verification plan section 4 requires the monitor to be fully passive and to
+reconstruct from pins only, sharing no state with the driver, "so that a driver
+defect cannot mask itself".
+
+The shortcut that breaks it is a single line: have the driver publish what it
+intended to drive. The scoreboard then compares the driver against itself, and
+a driver sending the wrong address is checked against the wrong address and
+passes. Every driver bug goes invisible at once.
+
+`axi_monitor` therefore has no handle to `axi_driver`, no access to its
+mailboxes, and no `req` -- only `vif.monitor_cb`, which is input-only by
+construction. It keeps its own accept-flags, duplicating logic that the driver
+and the DUT also have. Three independent answers to *when is a write complete*
+must agree.
+
+### Why counting proves something
+
+A check that could be satisfied by echoing proves nothing. This one cannot be:
+
+| Count | Derived from |
+|---|---|
+| issued | the sequence, incrementing after each `write()` / `read()` |
+| observed | pin handshakes, via `vif.monitor_cb` |
+| received | the analysis port, in `axi_observer` |
+
+Three numbers along paths that share no state. They agreed exactly.
+
+### What this does not establish
+
+**Counts are necessary, not sufficient.** A monitor can count six writes
+correctly and reconstruct every address wrong. Content checking is the
+scoreboard's job (26 Aug) and nothing before it has verified a single
+reconstructed field.
+
+**The back-to-back path has never been exercised.** The accept queues are
+mailboxes rather than flags specifically so that a response completing on the
+same cycle as a new accept cannot race. That case has not occurred: every
+`write()` and `read()` in the smoke sequence waits on `t.completed` before
+issuing the next, so the bus goes idle between transactions.
+
+`c_b2b_write` and `c_b2b_read` have read 0 since the checker was first bound
+and still do. The mailbox decision is defending a case that no test has
+produced, which makes it currently unfalsifiable rather than validated.
+
+Closing it needs a sequence that issues without waiting for completion --
+which the driver already permits, since `item_done()` fires on acceptance.
+That belongs with the backpressure work on 27 Aug, alongside the two
+backpressure covers that are zero for the same reason.
