@@ -19,6 +19,7 @@
 `define A_STATUS     32'h0000_0004
 `define A_CONFIG     32'h0000_0008
 `define A_INT_STATUS 32'h0000_0010
+`define A_COUNTER    32'h0000_0018
 `define A_SCRATCH    32'h0000_0014
 `define A_ID         32'h0000_001C
 
@@ -167,6 +168,62 @@ class axi_smoke_seq extends axi_base_seq;
         read(32'h0000_0006, d, r);
         check("misaligned read SLVERR", {30'b0, r}, 32'h2);
         check("RDATA zeroed on error",      d, 32'h0000_0000);
+
+        //--------------------------------------------------------------
+        // STATUS.error, and the v0.3 transparency rule (decision D1).
+        //
+        // Spec section 5 as clarified in v0.3: error is set by the last
+        // completed register transaction, and a read of STATUS is
+        // TRANSPARENT -- it does not update the bit. That clarification
+        // was made by this project on 14 Aug to resolve a contradiction
+        // in v0.2, has been implemented in RTL and in the scoreboard
+        // since, and until now nothing has ever exercised it.
+        //
+        // The misaligned read above left error set. Only bit [1] is
+        // checked: STATUS[0] is busy, which is cycle-level state.
+        //--------------------------------------------------------------
+        `uvm_info("SMOKE", "---- STATUS.error transparency (F25, spec v0.3 D1) ----", UVM_LOW)
+
+        read(`A_STATUS, d, r);
+        check("STATUS.error set after SLVERR", d & 32'h2, 32'h2);
+
+        // The whole point of D1: reading it again must NOT have cleared it.
+        // Under the literal v0.2 wording the first read would have cleared
+        // the bit and this would return 0.
+        read(`A_STATUS, d, r);
+        check("STATUS read is transparent",    d & 32'h2, 32'h2);
+
+        // Any other transaction completing with OKAY does clear it.
+        write(`A_SCRATCH, 32'h5A5A_5A5A, 4'b1111, r, 0, 0);
+        read(`A_STATUS, d, r);
+        check("STATUS.error cleared by OKAY",  d & 32'h2, 32'h0);
+
+        //--------------------------------------------------------------
+        // COUNTER is free-running, so the scoreboard cannot predict its
+        // value and skips the data comparison. Reading it here is what
+        // exercises that skip path -- otherwise the mask logic is code
+        // no test has ever executed. The RESPONSE is still checked.
+        //--------------------------------------------------------------
+        `uvm_info("SMOKE", "---- COUNTER read: response checked, data unpredictable ----", UVM_LOW)
+
+        // Enable it first. Read with enable clear and COUNTER returns 0,
+        // which is trivially predictable -- the skip would execute while
+        // proving nothing. Spec section 5: COUNTER increments every clock
+        // while CTRL.enable, so once running its value depends on cycles
+        // the scoreboard cannot see.
+        write(`A_CTRL, 32'h0000_0001, 4'b1111, r, 0, 0);
+        check("CTRL enable write OKAY", {30'b0, r}, 32'h0);
+
+        // CTRL[1] reset_stats always reads 0 (spec section 5, v0.3 D2),
+        // so a CTRL read after enabling returns exactly 1.
+        read(`A_CTRL, d, r);
+        check("CTRL reads enable=1, reset_stats=0", d, 32'h0000_0001);
+
+        read(`A_COUNTER, d, r);
+        check("COUNTER read OKAY",      {30'b0, r}, 32'h0);
+        `uvm_info("SMOKE",
+                  $sformatf("  COUNTER read 0x%08h -- nonzero and cycle-dependent; scoreboard skips it", d),
+                  UVM_LOW)
 
         if (errors == 0)
             `uvm_info("SMOKE", $sformatf("all %0d checks passed", checks), UVM_LOW)
