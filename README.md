@@ -120,15 +120,21 @@ The October RAL model is *generated*, not hand-written — that is the point at 
 
 | Metric | Value |
 |---|---|
-| Tests passing | 58 **smoke** checks — 31 register slave, 27 memory slave — under both Icarus 13.0 and Verilator 5.050 |
+| Tests passing | **23 UVM checks** (`axi_smoke_test`, Xcelium 25.03, scoreboard + monitor + bound SVA) · 58 non-UVM smoke checks — 31 register, 27 memory — under both Icarus 13.0 and Verilator 5.050 |
 | Functional coverage | not started; cover-property baseline in [tooling notes](docs/tooling_notes.md) |
 | Code coverage | not started — needs a commercial simulator |
 | Bugs found and root-caused | 1 genuine ([BUG-007](docs/bug_reports/BUG-007.md), checker cover defect); 4 injected and detected ([BUG-002](docs/bug_reports/BUG-002.md), BUG-003, v0.2 decode, write-data bypass) |
 
-**Read "tests passing" narrowly.** Those are non-UVM smoke checks from
-`tb/sanity_tb.sv` and `tb/sanity_mem_tb.sv` — no scoreboard, no randomisation,
-no coverage. They prove the RTL breathes; they are not verification, and the
-number will be replaced by the UVM test list once it exists.
+**Read these narrowly.** The 23 UVM checks are one directed test against the
+register slave, with a spec-derived scoreboard and the protocol checker bound —
+real verification, but one test. The 58 non-UVM checks prove the RTL breathes
+and nothing more. Neither number is a coverage figure; see
+[tooling notes](docs/tooling_notes.md) for what the cover model actually reaches.
+
+Every response is checked against a reference model derived from the spec, fed
+by a monitor that reconstructs from pins and has no access to the driver. Read
+data the model **cannot** predict — `COUNTER`, `STATUS.busy`, `INT_STATUS[3]` —
+is reported as skipped rather than silently passed.
 
 ## Tools
 

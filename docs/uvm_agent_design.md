@@ -242,3 +242,64 @@ Closing it needs a sequence that issues without waiting for completion --
 which the driver already permits, since `item_done()` fires on acceptance.
 That belongs with the backpressure work on 27 Aug, alongside the two
 backpressure covers that are zero for the same reason.
+
+---
+
+## 8. Scoreboard result
+
+**21 August 2026.** Xcelium 25.03. `axi_smoke_test`, 23/23, 0 errors,
+0 warnings, 0 fatals.
+
+```
+8 writes, 15 reads | 23 responses checked
+                   | 14 read-data checked, 1 skipped as unpredictable
+                   | 0 mismatches
+issued 8/15 | monitor saw 8/15 | scoreboard got 8/15
+```
+
+The model is derived from `dut_spec.md`, not from the RTL, and every rule cites
+its section. A reference model written by reading the RTL agrees with the RTL by
+construction and checks nothing.
+
+### Reporting what was not checked
+
+Three values are outside a transaction-level model's reach:
+
+| Field | Why |
+|---|---|
+| `COUNTER` | increments every clock while `CTRL.enable` (§5) — cycles, not transactions |
+| `STATUS[0]` busy | 1 while a write is in flight (§5) — cycle-level |
+| `INT_STATUS[3]` | set by `COUNTER` overflow, so it inherits the same problem |
+
+The alternative would have been a tolerance — *"within ±20"* — which is how a
+scoreboard quietly stops checking. Instead each skip is counted and reported, so
+**"not checked" can never be read as "checked and passed"**. The *response* is
+still checked on every transaction, including `COUNTER` reads.
+
+`INT_STATUS[2:0]` **is** checked: those events arrive in the transaction stream.
+
+### A first version of this test proved nothing
+
+The initial run reported `0 skipped`, because the sequence never read `COUNTER`
+or `STATUS` — the mask logic, the most delicate part of the scoreboard, had
+never executed.
+
+Adding a `COUNTER` read was not enough either. With `CTRL.enable` clear the
+counter never runs, so it returned 0 — trivially predictable, and the skip
+declined to check a constant. Only after enabling the counter first does it read
+`0x1c` and rising, at which point the skip means something.
+
+Both are the same failure: a branch that runs is not the same as a branch that
+is tested.
+
+### Scope, and what this does NOT discharge
+
+The scoreboard models the **register slave only**, the sole DUT `tb_top`
+instantiates. The associative-array memory model and the address decode arrive
+in September with the interconnect.
+
+**BUG-003 is therefore still outstanding.** It is a memory-slave defect, spec §9
+assigns it to the scoreboard, and this scoreboard cannot see memory traffic.
+`sanity_mem_tb` catching it does not satisfy §9. Recorded here because an
+earlier note in this project claimed the scoreboard would discharge it; it does
+not.

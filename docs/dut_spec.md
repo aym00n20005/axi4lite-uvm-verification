@@ -278,6 +278,17 @@ A fifth item is outside this document: `axi4lite_protocol_checker`'s
 `CHECK_ALIGN` parameter comment recommended `0` for the memory slave, which
 would disable a check §6 requires. Both slave binds use `CHECK_ALIGN = 1`.
 
+**Verification status of these revisions**, updated 21 August 2026. A spec
+decision that no test can distinguish from the alternative reading is not
+really a decision, so each one is tracked to a discriminating test.
+
+| # | Verified by | Status |
+|---|---|---|
+| 1 | `axi_smoke_seq`: write `0x100` returns SLVERR and `CTRL` is unaliased. Also `sanity_tb`. Under the v0.2 `ADDR[7:2]` decode this write lands on `CTRL` and returns OKAY. | ✅ 21 Aug, Xcelium |
+| 2 | `axi_smoke_seq`: write `CTRL = 0x1`, read back `0x0000_0001`. `reset_stats` never reads 1. | ✅ 21 Aug, Xcelium |
+| 3 | `axi_smoke_seq`: SLVERR, then read `STATUS` twice — the bit must survive the first read. Under the v0.2 wording the second read returns 0. | ✅ 21 Aug, Xcelium |
+| 4 | `axi_smoke_seq` and `sanity_tb`: misaligned read returns `RDATA == 0`. | ✅ 21 Aug, Xcelium |
+
 ### v0.2 — 12 August 2026
 
 Specification freeze.
