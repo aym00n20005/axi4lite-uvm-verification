@@ -17,6 +17,7 @@
 // Register offsets, spec section 5
 `define A_CTRL       32'h0000_0000
 `define A_STATUS     32'h0000_0004
+`define A_INT_ENABLE 32'h0000_000C
 `define A_CONFIG     32'h0000_0008
 `define A_INT_STATUS 32'h0000_0010
 `define A_COUNTER    32'h0000_0018
@@ -224,6 +225,58 @@ class axi_smoke_seq extends axi_base_seq;
         `uvm_info("SMOKE",
                   $sformatf("  COUNTER read 0x%08h -- nonzero and cycle-dependent; scoreboard skips it", d),
                   UVM_LOW)
+
+        //--------------------------------------------------------------
+        // Coverage closure for the bins a directed test can reach.
+        //
+        // Added 21 Aug after the first real coverage measurement showed
+        // cg_wstrb at 2/16, cg_alignment at 2/4 and cg_register_offset at
+        // 7/8. None of those were design gaps -- they were transactions
+        // nobody had written. The measurement is what turned them from
+        // invisible into a work item.
+        //
+        // In September these become axi_wstrb_test and axi_align_test as
+        // the verification plan's test list lays them out; one sequence
+        // is right while there is one test.
+        //--------------------------------------------------------------
+        `uvm_info("SMOKE", "---- WSTRB sweep, all 16 patterns (F16, cg_wstrb) ----", UVM_LOW)
+
+        // Spec section 5: only 4'b1111 is a legal register write. The
+        // other fifteen must every one return SLVERR and change nothing,
+        // which is fifteen checks of the same rule from fifteen angles.
+        for (int unsigned i = 0; i < 16; i++) begin
+            bit [3:0] sweep_strb = i[3:0];
+            write(`A_SCRATCH, 32'hC0DE_0000 | i, sweep_strb, r, 0, 0);
+            if (sweep_strb == 4'b1111)
+                check($sformatf("WSTRB=%04b OKAY", sweep_strb),   {30'b0, r}, 32'h0);
+            else
+                check($sformatf("WSTRB=%04b SLVERR", sweep_strb), {30'b0, r}, 32'h2);
+        end
+
+        // 4'b1111 is the last pattern swept, so it is the one that landed.
+        read(`A_SCRATCH, d, r);
+        check("only the full-strobe write took effect", d, 32'hC0DE_000F);
+
+        //--------------------------------------------------------------
+        `uvm_info("SMOKE", "---- remaining alignment offsets (F20, cg_alignment) ----", UVM_LOW)
+
+        // The misaligned read above used offset 2. Offsets 1 and 3 are
+        // the same rule at different byte positions.
+        read(32'h0000_0005, d, r);
+        check("addr offset 1 -> SLVERR", {30'b0, r}, 32'h2);
+        read(32'h0000_0007, d, r);
+        check("addr offset 3 -> SLVERR", {30'b0, r}, 32'h2);
+
+        //--------------------------------------------------------------
+        `uvm_info("SMOKE", "---- INT_ENABLE, the last untouched register ----", UVM_LOW)
+
+        // Implemented bits [3:0] (spec section 5), so the upper bits are
+        // reserved and must read 0 -- F13 again, on the one register no
+        // test had ever addressed.
+        write(`A_INT_ENABLE, 32'hFFFF_FFFF, 4'b1111, r, 0, 0);
+        check("INT_ENABLE write OKAY", {30'b0, r}, 32'h0);
+        read(`A_INT_ENABLE, d, r);
+        check("INT_ENABLE masks to 0xF", d, 32'h0000_000F);
 
         if (errors == 0)
             `uvm_info("SMOKE", $sformatf("all %0d checks passed", checks), UVM_LOW)
