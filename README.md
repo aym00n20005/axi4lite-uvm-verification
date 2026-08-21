@@ -120,8 +120,8 @@ The October RAL model is *generated*, not hand-written — that is the point at 
 
 | Metric | Value |
 |---|---|
-| Tests passing | **23 UVM checks** (`axi_smoke_test`, Xcelium 25.03, scoreboard + monitor + bound SVA) · 58 non-UVM smoke checks — 31 register, 27 memory — under both Icarus 13.0 and Verilator 5.050 |
-| Functional coverage | not started; cover-property baseline in [tooling notes](docs/tooling_notes.md) |
+| Tests passing | **44 UVM checks** (`axi_smoke_test`, Xcelium 25.03, scoreboard + monitor + bound SVA) · 58 non-UVM smoke checks — 31 register, 27 memory — under both Icarus 13.0 and Verilator 5.050 |
+| Functional coverage | **6 of 8 groups at 100%** (`cg_wstrb` 16/16, exceeding its ≥90% goal); the 2 remaining gaps are structural and justified in [coverage status](docs/coverage_status.md) |
 | Code coverage | not started — needs a commercial simulator |
 | Bugs found and root-caused | 1 genuine ([BUG-007](docs/bug_reports/BUG-007.md), checker cover defect); 4 injected and detected ([BUG-002](docs/bug_reports/BUG-002.md), BUG-003, v0.2 decode, write-data bypass) |
 
