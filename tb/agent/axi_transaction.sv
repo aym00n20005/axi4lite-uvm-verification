@@ -58,6 +58,14 @@ class axi_transaction extends uvm_sequence_item;
     bit [31:0] rdata;
     bit        completed;
 
+    // Filled in by the MONITOR from observed accept timing, not from the
+    // stimulus fields above. get_order() below reports what was asked
+    // for; this reports what actually happened on the bus. Coverage
+    // samples this one -- a coverage model fed from stimulus measures the
+    // testbench's intentions rather than the DUT's experience.
+    axi_order_e obs_order;
+    bit         obs_order_valid;
+
     `uvm_object_utils_begin(axi_transaction)
         `uvm_field_enum(axi_kind_e,   kind,       UVM_ALL_ON)
         `uvm_field_enum(axi_region_e, region,     UVM_ALL_ON | UVM_NOCOMPARE)

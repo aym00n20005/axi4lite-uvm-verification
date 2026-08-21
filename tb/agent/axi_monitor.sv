@@ -45,6 +45,10 @@ class axi_monitor extends uvm_component;
     int unsigned n_writes = 0;
     int unsigned n_reads  = 0;
 
+    // Accept times for the write halves, so the ordering can be OBSERVED
+    // rather than taken from the stimulus that requested it.
+    realtime aw_time, w_time;
+
     function new(string name, uvm_component parent);
         super.new(name, parent);
         aw_accepted = new();
@@ -87,6 +91,7 @@ class axi_monitor extends uvm_component;
             if (vif.monitor_cb.AWVALID === 1'b1 && vif.monitor_cb.AWREADY === 1'b1) begin
                 beat = axi_transaction::type_id::create("aw_beat");
                 beat.addr = vif.monitor_cb.AWADDR;
+                aw_time   = $realtime;
                 aw_accepted.put(beat);
             end
         end
@@ -100,6 +105,7 @@ class axi_monitor extends uvm_component;
                 beat = axi_transaction::type_id::create("w_beat");
                 beat.data = vif.monitor_cb.WDATA;
                 beat.strb = vif.monitor_cb.WSTRB;
+                w_time    = $realtime;
                 w_accepted.put(beat);
             end
         end
@@ -147,6 +153,13 @@ class axi_monitor extends uvm_component;
                     t.strb      = w.strb;
                     t.resp      = vif.monitor_cb.BRESP;
                     t.completed = 1'b1;
+
+                    // Observed, not requested. Equal timestamps mean the
+                    // two halves were accepted on the same clock edge.
+                    if      (aw_time <  w_time) t.obs_order = ORDER_AW_FIRST;
+                    else if (w_time  <  aw_time) t.obs_order = ORDER_W_FIRST;
+                    else                         t.obs_order = ORDER_SAME_CYCLE;
+                    t.obs_order_valid = 1'b1;
 
                     n_writes++;
                     `uvm_info(get_type_name(),
