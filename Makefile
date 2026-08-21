@@ -71,7 +71,7 @@ PLAY_smoke_DESIGN := tb/interface/axi4lite_if.sv rtl/axi4lite_reg_slave.sv \
 PLAY_smoke        := tb/agent/axi_transaction.sv tb/agent/axi_sequencer.sv \
                      tb/agent/axi_driver.sv tb/agent/axi_monitor.sv \
                      tb/agent/axi_master_agent.sv tb/sequences/axi_seqs.sv \
-                     tb/env/axi_observer.sv tb/env/axi_env.sv \
+                     tb/env/axi_scoreboard.sv tb/env/axi_env.sv \
                      tb/tests/axi_smoke_test.sv tb/tests/tb_top.sv
 
 playground:
@@ -94,11 +94,12 @@ playground:
 	   for f in $$srcs; do \
 	     echo "//================ $$f ================"; cat $$f; echo ""; done; \
 	 } > $$out; \
-	 echo "wrote $$out ($$(wc -l < $$out) lines) -- TESTBENCH pane"; \
+	 wrote_tb="$$out"; \
 	 if LC_ALL=C grep -qn '[^ -~\t]' $$out; then \
 	   echo "ERROR: non-ASCII in $$out -- Xcelium drops those bytes from string"; \
 	   echo "       literals (*W,NONPRT) and mangles the log. Offending lines:"; \
 	   LC_ALL=C grep -n '[^ -~\t]' $$out | head -5; exit 1; fi; \
+	 wrote_design=""; \
 	 dsrcs="$(PLAY_$(PLAY)_DESIGN)"; \
 	 if [ -n "$$dsrcs" ]; then \
 	   dout=sim/playground_$(PLAY)_design.sv; \
@@ -108,8 +109,21 @@ playground:
 	     for f in $$dsrcs; do \
 	       echo "//================ $$f ================"; cat $$f; echo ""; done; \
 	   } > $$dout; \
-	   echo "wrote $$dout ($$(wc -l < $$dout) lines) -- DESIGN pane"; \
-	 fi
+	   wrote_design="$$dout"; \
+	 fi; \
+	 echo ""; \
+	 echo "  ================ PASTE INTO EDA PLAYGROUND ================"; \
+	 if [ -n "$$wrote_design" ]; then \
+	   echo "    DESIGN pane     <-  $$wrote_design  ($$(wc -l < $$wrote_design) lines)"; \
+	 else \
+	   echo "    DESIGN pane     <-  (leave empty)"; \
+	 fi; \
+	 echo "    TESTBENCH pane  <-  $$wrote_tb  ($$(wc -l < $$wrote_tb) lines)"; \
+	 echo ""; \
+	 echo "    Simulator: Cadence Xcelium     UVM: 1.2"; \
+	 echo "    Clear both panes first -- stale content is silently compiled."; \
+	 echo "  ==========================================================="; \
+	 echo ""
 
 clean:
 	@rm -rf sim/*.out sim/*.vcd sim/*.dat sim/cov_annotated sim/playground_*.sv
