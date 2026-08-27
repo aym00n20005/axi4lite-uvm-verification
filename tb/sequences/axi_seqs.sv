@@ -80,6 +80,25 @@ virtual class axi_base_seq extends uvm_sequence #(axi_transaction);
         resp = t.resp;
     endtask
 
+    //------------------------------------------------------------------
+    // Non-blocking issue.
+    //
+    // finish_item() returns as soon as the DRIVER accepts the transaction
+    // (item_done fires on acceptance -- docs/uvm_agent_design.md section 2),
+    // so returning here without waiting on t.completed leaves the previous
+    // transaction still on the bus. That is what produces back-to-back
+    // traffic, and it is the only way c_b2b_write and c_b2b_read can ever
+    // be covered.
+    //
+    // The caller keeps the handle and waits later.
+    //------------------------------------------------------------------
+    task issue_nb(axi_transaction t);
+        start_item(t);
+        finish_item(t);
+        if (t.kind == AXI_WRITE) issued_writes++;
+        else                     issued_reads++;
+    endtask
+
 endclass
 
 
@@ -285,3 +304,120 @@ class axi_smoke_seq extends axi_base_seq;
     endtask
 
 endclass : axi_smoke_seq
+
+
+//======================================================================
+// axi_random_seq -- constrained-random traffic against the real DUT.
+//
+// The transaction class has had weighted region, alignment, strobe and
+// delay distributions since 19 Aug, measured over 500 items by
+// axi_rand_smoke. Until now none of that had ever driven a pin: the only
+// test that touched the DUT issued hand-picked addresses.
+//
+// That gap matters because a directed test can only find bugs someone
+// already thought of, and because the scoreboard had never disagreed with
+// the DUT across 44 transactions that a human chose.
+//
+// Three phases, and the split is deliberate.
+//
+//   1. Serialised random traffic. Every field random, every transaction
+//      waited on. Exercises the scoreboard hundreds of times and produces
+//      read backpressure for free, since r_ready_delay is randomised and
+//      the driver applies it before asserting RREADY.
+//
+//   2. A burst of writes issued WITHOUT waiting, so the next AW is offered
+//      while the previous B is still completing -- c_b2b_write.
+//
+//   3. The same for reads -- c_b2b_read.
+//
+// Phases 2 and 3 are single-kind on purpose. Mixing un-waited reads and
+// writes makes the completion ORDER depend on thread scheduling, and
+// STATUS.error is defined by "the last completed register transaction"
+// (spec section 5), so the scoreboard and the DUT could legitimately
+// disagree about which was last. Writes alone complete in issue order
+// through one slot, so the ordering stays defined. Mixed concurrent
+// traffic needs that question answered first, and it is not answered yet.
+//======================================================================
+class axi_random_seq extends axi_base_seq;
+
+    `uvm_object_utils(axi_random_seq)
+
+    int unsigned n_random = 150;
+    int unsigned n_burst  = 8;
+
+    function new(string name = "axi_random_seq");
+        super.new(name);
+    endfunction
+
+    task body();
+        axi_transaction t;
+        axi_transaction burst [$];
+
+        //--------------------------------------------------------------
+        `uvm_info("RAND", $sformatf("phase 1: %0d serialised random transactions", n_random), UVM_LOW)
+
+        for (int i = 0; i < n_random; i++) begin
+            t = axi_transaction::type_id::create($sformatf("rnd%0d", i));
+            start_item(t);
+            if (!t.randomize())
+                `uvm_fatal("RAND", $sformatf("randomize failed on item %0d", i))
+            finish_item(t);
+            wait (t.completed == 1'b1);
+            if (t.kind == AXI_WRITE) issued_writes++;
+            else                     issued_reads++;
+            if (i < 3)
+                `uvm_info("RAND", $sformatf("  %s", t.convert2string()), UVM_LOW)
+        end
+
+        //--------------------------------------------------------------
+        // Zero delays everywhere, so the next AW is offered on the cycle
+        // after the previous B completes. Fixed address and full strobe:
+        // the point of this phase is the TIMING, and leaving the payload
+        // random would make a scoreboard mismatch ambiguous between the
+        // two.
+        `uvm_info("RAND", $sformatf("phase 2: %0d back-to-back writes, no waiting", n_burst), UVM_LOW)
+
+        burst.delete();
+        for (int i = 0; i < n_burst; i++) begin
+            t = axi_transaction::type_id::create($sformatf("b2bw%0d", i));
+            if (!t.randomize() with {
+                    kind          == AXI_WRITE;
+                    region        == REGION_REG_IMPL;
+                    addr          == `A_SCRATCH;
+                    strb          == 4'b1111;
+                    misaligned    == 1'b0;
+                    aw_delay      == 0;
+                    w_delay       == 0;
+                    b_ready_delay == 0;
+                })
+                `uvm_fatal("RAND", "b2b write randomize failed")
+            issue_nb(t);
+            burst.push_back(t);
+        end
+        foreach (burst[i]) wait (burst[i].completed == 1'b1);
+
+        //--------------------------------------------------------------
+        `uvm_info("RAND", $sformatf("phase 3: %0d back-to-back reads, no waiting", n_burst), UVM_LOW)
+
+        burst.delete();
+        for (int i = 0; i < n_burst; i++) begin
+            t = axi_transaction::type_id::create($sformatf("b2br%0d", i));
+            if (!t.randomize() with {
+                    kind          == AXI_READ;
+                    region        == REGION_REG_IMPL;
+                    addr          == `A_SCRATCH;
+                    misaligned    == 1'b0;
+                    ar_delay      == 0;
+                    r_ready_delay == 0;
+                })
+                `uvm_fatal("RAND", "b2b read randomize failed")
+            issue_nb(t);
+            burst.push_back(t);
+        end
+        foreach (burst[i]) wait (burst[i].completed == 1'b1);
+
+        `uvm_info("RAND", $sformatf("issued %0d writes, %0d reads",
+                                    issued_writes, issued_reads), UVM_LOW)
+    endtask
+
+endclass : axi_random_seq

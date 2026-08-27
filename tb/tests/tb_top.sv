@@ -8,6 +8,10 @@
 // this module is the last thing in the TESTBENCH pane.
 //======================================================================
 
+`ifndef AXI_TEST
+  `define AXI_TEST "axi_smoke_test"
+`endif
+
 module tb_top;
 
     logic ACLK = 1'b0;
@@ -79,7 +83,10 @@ module tb_top;
         // "*" because every component wants the same interface. A narrow
         // scope would be wrong here, unlike is_active.
         uvm_config_db #(virtual axi4lite_if)::set(null, "*", "vif", vif);
-        run_test("axi_smoke_test");
+        // AXI_TEST is defined by `make playground` per bundle. EDA
+        // Playground's command line is fixed, so +UVM_TESTNAME is not
+        // available; a define is how a bundle selects its test.
+        run_test(`AXI_TEST);
     end
 
 endmodule : tb_top
