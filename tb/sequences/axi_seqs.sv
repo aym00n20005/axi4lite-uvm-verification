@@ -56,6 +56,9 @@ virtual class axi_base_seq extends uvm_sequence #(axi_transaction);
                 (local::w_d  >= 0) -> w_delay  == local::w_d;
             })
             `uvm_error(get_type_name(), $sformatf("write randomize failed addr=0x%08h", addr))
+        `uvm_info(get_type_name(),
+                  $sformatf("write  addr=0x%08h data=0x%08h strb=%04b -- issued",
+                            addr, data, strb), UVM_HIGH)
         finish_item(t);
         wait (t.completed == 1'b1);
         issued_writes++;
@@ -421,3 +424,120 @@ class axi_random_seq extends axi_base_seq;
     endtask
 
 endclass : axi_random_seq
+
+
+//======================================================================
+// axi_mem_seq -- directed sequence for the memory slave.
+//
+// Deliberately mirrors tb/sanity_mem_tb.sv, the same way axi_smoke_seq
+// mirrors sanity_tb.sv: when a new DUT first meets the UVM environment,
+// "is it the DUT or is it me" needs a bench known to pass on that exact
+// RTL to compare against.
+//
+// What this is really for is the three places the memory slave behaves
+// OPPOSITELY to the register slave, because those are where a scoreboard
+// that quietly reuses the register model would agree with itself:
+//
+//   WSTRB is honoured byte by byte, not rejected
+//   WSTRB == 4'b0000 is a legal OKAY no-op, not an SLVERR
+//   there is no unimplemented-offset case at all
+//======================================================================
+
+`define M_BASE 32'h0000_1000
+`define M_W000 32'h0000_1000
+`define M_W005 32'h0000_1014
+`define M_W255 32'h0000_13FC
+
+class axi_mem_seq extends axi_base_seq;
+
+    `uvm_object_utils(axi_mem_seq)
+
+    int errors = 0;
+    int checks = 0;
+
+    function new(string name = "axi_mem_seq");
+        super.new(name);
+    endfunction
+
+    function void check(string what, bit [31:0] got, bit [31:0] exp);
+        checks++;
+        if (got === exp)
+            `uvm_info("MEM", $sformatf("  PASS  %-38s 0x%08h", what, got), UVM_LOW)
+        else begin
+            errors++;
+            `uvm_error("MEM", $sformatf("  FAIL  %-38s 0x%08h (expected 0x%08h)",
+                                        what, got, exp))
+        end
+    endfunction
+
+    task body();
+        bit [31:0] d;
+        bit [1:0]  r;
+
+        `uvm_info("MEM", "---- full words at both ends of the region (F14) ----", UVM_LOW)
+        write(`M_W000, 32'hCAFE_BABE, 4'b1111, r, 0, 0);
+        check("word 0 write OKAY",   {30'b0, r}, 32'h0);
+        read(`M_W000, d, r);
+        check("word 0 reads back",           d, 32'hCAFE_BABE);
+
+        write(`M_W255, 32'h5A5A_A5A5, 4'b1111, r, 0, 0);
+        read(`M_W255, d, r);
+        check("word 255 reads back",         d, 32'h5A5A_A5A5);
+        read(`M_W000, d, r);
+        check("word 0 undisturbed",          d, 32'hCAFE_BABE);
+
+        // Cumulative: each lane must land on its own byte and disturb
+        // nothing else. A reversed lane-to-byte mapping shows up here and
+        // nowhere else -- and this is what BUG-003 breaks.
+        `uvm_info("MEM", "---- byte lanes, one at a time (F15) ----", UVM_LOW)
+        write(`M_W005, 32'h0000_0000, 4'b1111, r, 0, 0);
+        write(`M_W005, 32'hAABB_CCDD, 4'b0001, r, 0, 0);
+        read(`M_W005, d, r);
+        check("WSTRB=0001 -> byte 0 only",    d, 32'h0000_00DD);
+        write(`M_W005, 32'hAABB_CCDD, 4'b0010, r, 0, 0);
+        read(`M_W005, d, r);
+        check("WSTRB=0010 -> byte 1 only",    d, 32'h0000_CCDD);
+        write(`M_W005, 32'hAABB_CCDD, 4'b0100, r, 0, 0);
+        read(`M_W005, d, r);
+        check("WSTRB=0100 -> byte 2 only",    d, 32'h00BB_CCDD);
+        write(`M_W005, 32'hAABB_CCDD, 4'b1000, r, 0, 0);
+        read(`M_W005, d, r);
+        check("WSTRB=1000 -> byte 3 only",    d, 32'hAABB_CCDD);
+
+        `uvm_info("MEM", "---- non-contiguous strobe ----", UVM_LOW)
+        write(`M_W005, 32'h1122_3344, 4'b1010, r, 0, 0);
+        read(`M_W005, d, r);
+        check("only bytes 1 and 3 changed",   d, 32'h11BB_33DD);
+
+        // The contrast. Identical stimulus on the register slave returns
+        // SLVERR and sets INT_STATUS[2] (spec section 5).
+        `uvm_info("MEM", "---- WSTRB=0000 is a legal no-op here (spec section 6) ----", UVM_LOW)
+        write(`M_W005, 32'hFFFF_FFFF, 4'b0000, r, 0, 0);
+        check("zero strobe returns OKAY", {30'b0, r}, 32'h0);
+        read(`M_W005, d, r);
+        check("memory unchanged",             d, 32'h11BB_33DD);
+
+        `uvm_info("MEM", "---- misaligned, bus-error only (F20) ----", UVM_LOW)
+        write(`M_BASE + 32'h016, 32'hDEAD_DEAD, 4'b1111, r, 0, 0);
+        check("misaligned write SLVERR", {30'b0, r}, 32'h2);
+        read(`M_W005, d, r);
+        check("no state change",              d, 32'h11BB_33DD);
+        read(`M_BASE + 32'h016, d, r);
+        check("misaligned read SLVERR",  {30'b0, r}, 32'h2);
+        check("RDATA zeroed on error",        d, 32'h0000_0000);
+
+        `uvm_info("MEM", "---- AW/W ordering independence (F03) ----", UVM_LOW)
+        write(`M_W005, 32'h0F0F_0F0F, 4'b1111, r, 4, 0);   // W first
+        read(`M_W005, d, r);
+        check("W-before-AW landed",           d, 32'h0F0F_0F0F);
+        write(`M_W005, 32'hF0F0_F0F0, 4'b1111, r, 0, 4);   // AW first
+        read(`M_W005, d, r);
+        check("AW-before-W landed",           d, 32'hF0F0_F0F0);
+
+        if (errors == 0)
+            `uvm_info("MEM", $sformatf("all %0d checks passed", checks), UVM_LOW)
+        else
+            `uvm_error("MEM", $sformatf("%0d of %0d checks FAILED", errors, checks))
+    endtask
+
+endclass : axi_mem_seq

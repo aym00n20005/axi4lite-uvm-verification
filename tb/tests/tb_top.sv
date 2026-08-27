@@ -75,6 +75,35 @@ module tb_top;
         vif.ARPROT  = '0;
     end
 
+
+    //------------------------------------------------------------------
+    // Watchdog.
+    //
+    // A hang is the one failure mode this environment could not report.
+    // EDA Playground kills an over-running job with exit 137 and no
+    // message, so a stalled handshake produced no evidence at all. This
+    // turns that into a bus-state dump naming the channel that is stuck.
+    //
+    // Every stall has a signature: VALID high with READY low means the
+    // slave is not accepting; both low on a channel that should be busy
+    // means the driver never issued.
+    //------------------------------------------------------------------
+    initial begin
+        #50us;
+        $display("");
+        $display("=================== WATCHDOG ===================");
+        $display(" no completion by 50us. ARESETn=%b", ARESETn);
+        $display("   AW  VALID=%b READY=%b  ADDR=0x%08h", vif.AWVALID, vif.AWREADY, vif.AWADDR);
+        $display("   W   VALID=%b READY=%b  DATA=0x%08h STRB=%04b",
+                 vif.WVALID, vif.WREADY, vif.WDATA, vif.WSTRB);
+        $display("   B   VALID=%b READY=%b  RESP=%02b", vif.BVALID, vif.BREADY, vif.BRESP);
+        $display("   AR  VALID=%b READY=%b  ADDR=0x%08h", vif.ARVALID, vif.ARREADY, vif.ARADDR);
+        $display("   R   VALID=%b READY=%b  DATA=0x%08h RESP=%02b",
+                 vif.RVALID, vif.RREADY, vif.RDATA, vif.RRESP);
+        $display("================================================");
+        $fatal(1, "watchdog: bus stalled");
+    end
+
     initial begin
         $dumpfile("dump.vcd");
         // Scoped to tb_top. A bare $dumpvars probes the UVM package too

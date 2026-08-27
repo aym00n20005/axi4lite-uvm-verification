@@ -12,15 +12,20 @@
 // nothing.
 //
 //----------------------------------------------------------------------
-// SCOPE: this models the REGISTER SLAVE, because that is the only DUT
-// tb_top instantiates today. The memory model (an associative array, per
-// vplan section 4) and the address decode arrive in September with the
-// interconnect. Modelling a slave that receives no traffic would be
-// untested code pretending to be coverage.
+// SCOPE: models ONE slave, chosen by the slave_kind config -- whichever
+// the testbench top instantiated. There is no interconnect yet, so there
+// is no address decode to route between them; each top has exactly one
+// DUT and the model must match it.
 //
-// Note that standalone, the register slave sees ADDR[11:0] and therefore
-// aliases 0x1000 onto CTRL exactly as it aliases 0x100 -- routing is the
-// interconnect's job. The model reproduces that deliberately.
+// That is why slave_kind is required rather than inferred. Standalone,
+// each slave aliases the whole address space onto its own decode: the
+// register slave sees ADDR[11:0], so 0x1000 lands on CTRL, and the memory
+// slave sees ADDR[9:2], so 0x0000 lands on word 0. Both are correct --
+// routing is the interconnect's job -- but the model cannot guess which
+// aliasing applies. It is told.
+//
+// In September the interconnect makes this a real decode and both models
+// run side by side, which is the shape they are already written in.
 //----------------------------------------------------------------------
 // WHAT CANNOT BE PREDICTED, and why it is skipped rather than fudged:
 //
@@ -53,6 +58,8 @@ localparam bit [2:0] SB_ID         = 3'd7;
 localparam bit [1:0] SB_OKAY   = 2'b00;
 localparam bit [1:0] SB_SLVERR = 2'b10;
 
+typedef enum { SLAVE_REG, SLAVE_MEM } axi_slave_kind_e;
+
 
 class axi_scoreboard extends uvm_component;
 
@@ -71,6 +78,24 @@ class axi_scoreboard extends uvm_component;
     bit        m_status_error = 1'b0;
 
     //------------------------------------------------------------------
+    // Memory model -- spec section 6. An associative array, per vplan
+    // section 4, so only words that were written exist.
+    //
+    // m_mem_valid tracks which BYTES are defined. Spec section 6 says
+    // reset does not clear the array, and nothing initialises it, so an
+    // unwritten byte reads X in the DUT and is unpredictable here. A
+    // partial write to a fresh word defines only the strobed lanes.
+    //
+    // The spec states the no-clear-on-reset rule explicitly "so it isn't
+    // mistaken for a bug during scoreboard bring-up". This is that
+    // bring-up, and per-byte validity is what the warning was about.
+    //------------------------------------------------------------------
+    bit [31:0] m_mem       [bit [7:0]];
+    bit [3:0]  m_mem_valid [bit [7:0]];
+
+    axi_slave_kind_e slave_kind = SLAVE_REG;
+
+    //------------------------------------------------------------------
     int unsigned n_writes        = 0;
     int unsigned n_reads         = 0;
     int unsigned n_resp_checked  = 0;
@@ -85,6 +110,11 @@ class axi_scoreboard extends uvm_component;
     function void build_phase(uvm_phase phase);
         super.build_phase(phase);
         analysis_export = new("analysis_export", this);
+        if (!uvm_config_db #(axi_slave_kind_e)::get(this, "", "slave_kind", slave_kind))
+            `uvm_info(get_type_name(),
+                      "no slave_kind in config_db -- modelling the register slave", UVM_MEDIUM)
+        `uvm_info(get_type_name(),
+                  $sformatf("modelling %s", slave_kind.name()), UVM_LOW)
     endfunction
 
     //==================================================================
@@ -97,8 +127,94 @@ class axi_scoreboard extends uvm_component;
 
     //==================================================================
     function void write(axi_transaction t);
-        if (t.kind == AXI_WRITE) begin n_writes++; check_write(t); end
-        else                     begin n_reads++;  check_read(t);  end
+        if (t.kind == AXI_WRITE) begin
+            n_writes++;
+            if (slave_kind == SLAVE_MEM) check_write_mem(t);
+            else                         check_write(t);
+        end else begin
+            n_reads++;
+            if (slave_kind == SLAVE_MEM) check_read_mem(t);
+            else                         check_read(t);
+        end
+    endfunction
+
+    //==================================================================
+    // Memory slave -- spec section 6.
+    //
+    // Misalignment is the only error. WSTRB is HONOURED byte by byte,
+    // and 4'b0000 is a legal no-op returning OKAY -- the exact opposite
+    // of the register slave, where any strobe but 4'b1111 is SLVERR.
+    // Same four bits, opposite policy; this is the model that has to
+    // hold both readings at once.
+    //==================================================================
+    function void check_write_mem(axi_transaction t);
+        bit [1:0] exp_resp;
+        bit [7:0] word;
+
+        exp_resp = is_misaligned(t.addr) ? SB_SLVERR : SB_OKAY;
+
+        n_resp_checked++;
+        if (t.resp !== exp_resp)
+            report_mismatch("BRESP", t, {30'b0, t.resp}, {30'b0, exp_resp});
+
+        // Spec section 6: a misaligned access changes no state.
+        if (exp_resp != SB_OKAY) return;
+
+        word = t.addr[9:2];
+        if (!m_mem.exists(word)) begin
+            m_mem[word]       = 32'h0;
+            m_mem_valid[word] = 4'h0;
+        end
+
+        // WSTRB == 4'b0000 needs no special case here either: no lane is
+        // enabled, nothing changes, and the response is already OKAY.
+        for (int b = 0; b < 4; b++) begin
+            if (t.strb[b]) begin
+                m_mem[word][8*b +: 8] = t.data[8*b +: 8];
+                m_mem_valid[word][b]  = 1'b1;
+            end
+        end
+    endfunction
+
+    function void check_read_mem(axi_transaction t);
+        bit [1:0]  exp_resp;
+        bit [31:0] exp_data;
+        bit [31:0] mask;
+        bit [7:0]  word;
+        bit [3:0]  v;
+
+        exp_resp = is_misaligned(t.addr) ? SB_SLVERR : SB_OKAY;
+
+        n_resp_checked++;
+        if (t.resp !== exp_resp)
+            report_mismatch("RRESP", t, {30'b0, t.resp}, {30'b0, exp_resp});
+
+        if (exp_resp != SB_OKAY) begin
+            exp_data = 32'h0;               // spec section 4
+            mask     = 32'hFFFF_FFFF;
+        end
+        else begin
+            word = t.addr[9:2];
+            if (!m_mem.exists(word)) begin
+                // Never written. Spec section 6: reset does not clear the
+                // array and nothing initialises it, so the DUT returns X.
+                exp_data = 32'h0;
+                mask     = 32'h0;
+            end
+            else begin
+                v        = m_mem_valid[word];
+                exp_data = m_mem[word];
+                // Compare only the bytes some write has defined.
+                mask     = {{8{v[3]}}, {8{v[2]}}, {8{v[1]}}, {8{v[0]}}};
+            end
+        end
+
+        if (mask == 32'h0) n_data_skipped++;
+        else begin
+            n_data_checked++;
+            if ((t.rdata & mask) !== (exp_data & mask))
+                report_mismatch("RDATA", t, t.rdata & mask, exp_data & mask);
+        end
     endfunction
 
     function void report_mismatch(string what, axi_transaction t,
