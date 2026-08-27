@@ -1,0 +1,109 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>AXI4-Lite UVM Verification - one page</title>
+<style>
+  @page { size: A4; margin: 13mm 14mm; }
+  * { box-sizing: border-box; }
+  body { font: 9.8pt/1.45 "Helvetica Neue", Helvetica, Arial, sans-serif;
+         color: #111; margin: 0; }
+  h1 { font-size: 16pt; margin: 0 0 1mm; letter-spacing: -0.2pt; }
+  .sub { font-size: 9pt; color: #444; margin: 0 0 1mm; }
+  .meta { font-size: 8.2pt; color: #666; margin: 0 0 3mm;
+          border-bottom: 1.2pt solid #111; padding-bottom: 2mm; }
+  h2 { font-size: 9.6pt; text-transform: uppercase; letter-spacing: 0.6pt;
+       margin: 3.4mm 0 1.4mm; color: #000; }
+  p { margin: 0 0 1.6mm; }
+  ul { margin: 0 0 1.6mm; padding-left: 4.2mm; }
+  li { margin-bottom: 0.9mm; }
+  .lead { font-size: 10pt; }
+  .cols { display: flex; gap: 6mm; }
+  .cols > div { flex: 1; }
+  table { width: 100%; border-collapse: collapse; font-size: 8.8pt; }
+  td { padding: 0.7mm 0; vertical-align: top; }
+  td.k { color: #555; padding-right: 3mm; white-space: nowrap; }
+  .find { border-left: 2pt solid #111; padding: 0 0 0 3mm; margin: 0 0 2.4mm; }
+  .find > b:first-child { display: block; font-size: 9.2pt; margin-bottom: 0.4mm; }
+  .find span { color: #333; }
+  code { font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 8.4pt; }
+  .scope { background: #f4f4f4; padding: 2.2mm 3mm; font-size: 8.6pt; color: #333; }
+  footer { margin-top: 3.6mm; padding-top: 2mm; border-top: 0.7pt solid #bbb;
+           font-size: 8.4pt; color: #555; display: flex; justify-content: space-between; }
+</style>
+
+<h1>AXI4-Lite Peripheral Subsystem &mdash; UVM Verification</h1>
+<p class="sub">SystemVerilog &middot; UVM &middot; SVA &middot; Functional Coverage &middot; Constrained Random</p>
+<p class="meta">Ayman Shahapuri &middot; Final-year ECE, Bengaluru &middot;
+  github.com/aym00n20005/axi4lite-uvm-verification</p>
+
+<p class="lead"><b>The design is deliberately small so the effort goes into the
+methodology.</b> Two AXI4-Lite slaves &mdash; a register file with mixed
+RW/RO/W1C policies and a byte-addressable memory. Everything interesting is in
+the machinery built to check them.</p>
+
+<div class="cols">
+<div>
+  <h2>Built</h2>
+  <ul>
+    <li>Specification written and frozen <b>before</b> any RTL; corrected before it, never after</li>
+    <li><b>23 SVA assertions + 14 cover properties</b>, bound to the DUT so no assertion code sits in <code>rtl/</code></li>
+    <li>UVM agent with <b>five independent per-channel threads</b>, not a sequential FSM &mdash; AW and W are separate channels and a lockstep driver can never produce W-before-AW</li>
+    <li>Passive monitor rebuilding transactions <b>from pins only</b>, with no route to the driver</li>
+    <li>Scoreboard whose reference model is derived from the <b>specification</b>, not the RTL</li>
+    <li>Coverage collector sampled from observation, reporting <b>missing bins by name</b></li>
+  </ul>
+</div>
+<div>
+  <h2>Measured</h2>
+  <table>
+    <tr><td class="k">Directed UVM</td><td>61 checks, 0 scoreboard mismatches</td></tr>
+    <tr><td class="k">Random UVM</td><td>166 transactions, 0 mismatches</td></tr>
+    <tr><td class="k">Non-UVM smoke</td><td>58 checks, two simulators, lint clean</td></tr>
+    <tr><td class="k">Coverage</td><td>6 of 8 groups at 100%; every open bin justified in writing</td></tr>
+    <tr><td class="k">Spec revisions</td><td>4, each traced to a test that fails under the old wording</td></tr>
+    <tr><td class="k">Bug injections</td><td>4 of 6 detected, each by the mechanism the plan assigns it</td></tr>
+    <tr><td class="k">Genuine bugs</td><td>3 found &mdash; all three in the testbench</td></tr>
+  </table>
+  <h2>Tools</h2>
+  <p>Cadence Xcelium (UVM) &middot; Verilator + Icarus (local RTL &amp; SVA) &middot;
+     Make &middot; Git. Aldec Riviera compiles UVM but cannot simulate it on the
+     free tier &mdash; measured, not assumed.</p>
+</div>
+</div>
+
+<h2>What the testbench found</h2>
+
+<div class="find"><b>A cover point that could not fail to be covered.</b>
+<span>The property meant to prove the driver's threads run independently was
+satisfied by <i>any</i> multi-transaction run. It could never stay uncovered, so
+it could never warn. Qualifying it dropped the hit count from <b>10 to 1</b> on
+identical stimulus.</span></div>
+
+<div class="find"><b>A correct, bound assertion sitting silently on a broken design.</b>
+<span>I injected a real protocol defect and ran it three ways. Bound assertion:
+caught at the moment of violation. No assertion: caught twelve checks later as
+data corruption. Bound assertion with one stimulus case removed:
+<b>31 of 31 checks passed</b>. A checker constrains nothing if the stimulus never
+reaches the corner.</span></div>
+
+<div class="find"><b>A protocol violation that every functional check passed.</b>
+<span>Injected into my own driver: the bus was driven illegally on every write,
+all checks passed, and <code>UVM_ERROR: 0</code>. Only the assertion saw it.
+Functional correctness and protocol compliance are independent properties &mdash;
+demonstrated, not claimed.</span></div>
+
+<div class="find"><b>Two contradictions in my own frozen specification.</b>
+<span>Found while deriving the architecture on paper. One decode clause made a
+required error response unreachable; one status bit was defined so that reading
+it destroyed it. Both fixed in the document first, then the RTL.</span></div>
+
+<p class="scope"><b>Honest scope.</b> In progress, and the plan runs to December.
+No interconnect yet, so <code>DECERR</code> and routed memory traffic are
+unreachable and recorded as such. No RAL model yet. Three coverage groups are
+listed as unmodelled rather than faked, because they need per-cycle timing the
+monitor does not record. Coverage is per-test and unmerged. Every number above
+came from a run; nothing is projected.</p>
+
+<footer>
+  <span>Verification plan, DUT spec, 9 bug reports and a full walkthrough in <code>docs/</code></span>
+  <span>28 August 2026</span>
+</footer>
