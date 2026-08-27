@@ -7,6 +7,7 @@ per verification plan §7. A testbench that has never caught a bug is unproven.
 |---|---|---|---|---|
 | [BUG-002](BUG-002.md) | injected | both slaves | SVA `a_bvalid_not_early` | detected, reverted |
 | [BUG-003](BUG-003.md) | injected | memory slave | **scoreboard**, as §9 requires | detected, reverted |
+| [BUG-006](BUG-006.md) | injected | register slave `COUNTER` | **directed test**, as §9 requires; also the scoreboard | detected, reverted |
 | [BUG-007](BUG-007.md) | **genuine** | protocol checker | cover-count review | fixed in `ba344fa` |
 
 ## Outstanding injections — spec §9
@@ -16,7 +17,6 @@ per verification plan §7. A testbench that has never caught a bug is unproven.
 | BUG-001 | UVM driver | no driver yet — UVM milestone |
 | BUG-004 | `INT_STATUS` as plain RW | needs the RAL access-policy test — October |
 | BUG-005 | interconnect decode | interconnect not built — September |
-| BUG-006 | `COUNTER` vs `reset_stats` | directed test exists in `sanity_tb`; not yet run as a formal injection |
 
 Numbering: spec §9 reserves 001–006 for the planned injections. Genuine finds
 continue the same sequence from 007.

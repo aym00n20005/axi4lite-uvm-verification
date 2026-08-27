@@ -124,7 +124,7 @@ The October RAL model is *generated*, not hand-written — that is the point at 
 | Non-UVM smoke | **58 checks** — 31 register, 27 memory — under both Icarus 13.0 and Verilator 5.050 |
 | Functional coverage | 8 groups measured per test. `axi_smoke_test` closes 6/8; `axi_random_test` closes 6/8 on a different set. Every open bin justified in [coverage status](docs/coverage_status.md) |
 | Code coverage | not started — needs a commercial simulator invoked with coverage enabled |
-| Bugs found and root-caused | **2 genuine, both in the protocol checker** — [BUG-007](docs/bug_reports/BUG-007.md), a cover point that could not fail to be covered; [BUG-008](docs/bug_reports/BUG-008.md), an assertion that failed on correct hardware, found by random traffic on its first run. Plus 4 injected and detected ([BUG-002](docs/bug_reports/BUG-002.md), BUG-003, v0.2 decode, write-data bypass) |
+| Bugs found and root-caused | **3 genuine, all in the testbench** — [BUG-007](docs/bug_reports/BUG-007.md) a cover point that could not fail to be covered; [BUG-008](docs/bug_reports/BUG-008.md) an assertion that failed on correct hardware; [BUG-009](docs/bug_reports/BUG-009.md) a driver race that passed for eleven days on timing luck. **3 of the 6 planned injections detected**, each by the mechanism §9 assigns it — [BUG-002](docs/bug_reports/BUG-002.md) by SVA, [BUG-003](docs/bug_reports/BUG-003.md) by the scoreboard, [BUG-006](docs/bug_reports/BUG-006.md) by a directed test. BUG-001 needs a driver injection, BUG-004 the RAL, BUG-005 the interconnect |
 
 **Read these narrowly.** Two UVM tests against one slave — the memory slave is
 not yet in the UVM environment, and there is no interconnect, so `DECERR` and
