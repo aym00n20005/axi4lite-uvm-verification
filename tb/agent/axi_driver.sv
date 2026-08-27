@@ -134,6 +134,33 @@ class axi_driver extends uvm_driver #(axi_transaction);
     endtask
 
     //==================================================================
+    // ALIGNMENT NOTE, and it applies to every channel task below.
+    //
+    // Each task begins with @(vif.master_cb) BEFORE driving anything.
+    // Without it the task resumes from its mailbox at whatever time the
+    // sequencer handshake happened -- which is not necessarily a clocking
+    // event -- and with a zero delay there is nothing to re-align it.
+    //
+    // A clocking-block output assignment applies at the NEXT clocking
+    // event plus the output skew. Unaligned, the assert and the deassert
+    // can resolve to the SAME event, and the later write wins:
+    //
+    //     AWVALID <= 1'b1;                       -> event E
+    //     do @(cb); while (!AWREADY);            -> returns at E
+    //     AWVALID <= 1'b0;                       -> also E, and wins
+    //
+    // AWADDR is written once so it survives; AWVALID is written twice so
+    // it never rises. That is a bus with the payload driven, VALID low,
+    // READY high and nothing ever happening -- which is precisely what
+    // axi_mem_test hung on for 40 cycles on 27 Aug.
+    //
+    // It worked on the register slave by luck of when dispatch landed
+    // relative to the clock, which is the worst kind of working. The
+    // non-UVM benches never showed it because every task in sanity_tb.sv
+    // starts with @(posedge ACLK).
+    //==================================================================
+
+    //==================================================================
     // Write address channel
     //
     // aw_delay and w_delay are counted from the same instant -- the
@@ -149,6 +176,7 @@ class axi_driver extends uvm_driver #(axi_transaction);
         axi_transaction t;
         forever begin
             aw_q.get(t);
+            @(vif.master_cb);                       // align to the clock grid
             repeat (t.aw_delay) @(vif.master_cb);
             vif.master_cb.AWADDR  <= t.addr;
             vif.master_cb.AWPROT  <= 3'b000;
@@ -165,6 +193,7 @@ class axi_driver extends uvm_driver #(axi_transaction);
         axi_transaction t;
         forever begin
             w_q.get(t);
+            @(vif.master_cb);                       // align to the clock grid
             repeat (t.w_delay) @(vif.master_cb);
             vif.master_cb.WDATA  <= t.data;
             vif.master_cb.WSTRB  <= t.strb;
@@ -186,6 +215,7 @@ class axi_driver extends uvm_driver #(axi_transaction);
         axi_transaction t;
         forever begin
             b_q.get(t);
+            @(vif.master_cb);                       // align to the clock grid
             repeat (t.b_ready_delay) @(vif.master_cb);
             vif.master_cb.BREADY <= 1'b1;
             do @(vif.master_cb); while (vif.master_cb.BVALID !== 1'b1);
@@ -203,6 +233,7 @@ class axi_driver extends uvm_driver #(axi_transaction);
         axi_transaction t;
         forever begin
             ar_q.get(t);
+            @(vif.master_cb);                       // align to the clock grid
             repeat (t.ar_delay) @(vif.master_cb);
             vif.master_cb.ARADDR  <= t.addr;
             vif.master_cb.ARPROT  <= 3'b000;
@@ -219,6 +250,7 @@ class axi_driver extends uvm_driver #(axi_transaction);
         axi_transaction t;
         forever begin
             r_q.get(t);
+            @(vif.master_cb);                       // align to the clock grid
             repeat (t.r_ready_delay) @(vif.master_cb);
             vif.master_cb.RREADY <= 1'b1;
             do @(vif.master_cb); while (vif.master_cb.RVALID !== 1'b1);
