@@ -5,6 +5,7 @@ per verification plan §7. A testbench that has never caught a bug is unproven.
 
 | ID | Class | Where | Detected by | Status |
 |---|---|---|---|---|
+| [BUG-001](BUG-001.md) | injected | **driver** | SVA `a_awvalid_stable` | detected |
 | [BUG-002](BUG-002.md) | injected | both slaves | SVA `a_bvalid_not_early` | detected, reverted |
 | [BUG-003](BUG-003.md) | injected | memory slave | **scoreboard**, as §9 requires | detected, reverted |
 | [BUG-006](BUG-006.md) | injected | register slave `COUNTER` | **directed test**, as §9 requires; also the scoreboard | detected, reverted |
@@ -14,7 +15,6 @@ per verification plan §7. A testbench that has never caught a bug is unproven.
 
 | ID | Where | Blocked on |
 |---|---|---|
-| BUG-001 | UVM driver | no driver yet — UVM milestone |
 | BUG-004 | `INT_STATUS` as plain RW | needs the RAL access-policy test — October |
 | BUG-005 | interconnect decode | interconnect not built — September |
 

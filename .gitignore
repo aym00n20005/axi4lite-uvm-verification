@@ -17,7 +17,10 @@ obj_dir/
 coverage.dat
 sim/*.dat
 sim/cov_annotated/
-sim/playground_*.sv
+# Generated bundles and injected benches, reproducible from the sources.
+# NB: .gitignore has no inline comments -- a trailing '# ...' becomes part
+# of the pattern and the rule silently matches nothing.
+sim/*.sv
 *.jou
 *.wdb
 xsim.dir/
