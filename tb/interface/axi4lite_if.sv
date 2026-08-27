@@ -256,13 +256,40 @@ module axi4lite_protocol_checker #(
     //==================================================================
     // 6. Alignment -- spec section 4. Misaligned must return SLVERR, never OKAY.
     //==================================================================
+    //
+    // Checked AT THE RESPONSE, not on a timer started by the address
+    // accept. v0.2 of this file wrote:
+    //
+    //   (aw_acc && AWADDR[1:0] != 0) |-> ##[1:8] (BVALID && BRESP != 0)
+    //
+    // which assumes a response arrives within 8 cycles of the AW accept.
+    // It does not. BVALID cannot assert until W has ALSO been accepted
+    // (section 3 rule 5), and the gap between AW and W is chosen by the
+    // MASTER, bounded by nothing in this spec. Any write whose w_delay
+    // exceeded 8 cycles failed a completely correct DUT -- a false
+    // positive, which is the worse kind: a checker that cries wolf on
+    // correct hardware gets ignored, and is then worthless when right.
+    //
+    // Found by axi_random_test, 23 Aug. Every directed test used delays
+    // of 4 or less and sat comfortably inside the window. See
+    // docs/bug_reports/BUG-008.md.
+    //
+    // The response form needs no window at all: at every response, either
+    // the address was aligned or the response is an error.
+    logic [ADDR_WIDTH-1:0] aw_addr_q, ar_addr_q;
+
+    always_ff @(posedge ACLK) begin
+        if (aw_acc) aw_addr_q <= AWADDR;
+        if (ar_acc) ar_addr_q <= ARADDR;
+    end
+
     if (CHECK_ALIGN) begin : g_align
         a_misaligned_write_errors : assert property
-            ((aw_acc && (AWADDR[1:0] != 2'b00)) |-> ##[1:8] (BVALID && BRESP != 2'b00))
+            (BVALID |-> (aw_addr_q[1:0] == 2'b00) || (BRESP != 2'b00))
             else $error("Misaligned write did not return an error response");
 
         a_misaligned_read_errors : assert property
-            ((ar_acc && (ARADDR[1:0] != 2'b00)) |-> ##[1:8] (RVALID && RRESP != 2'b00))
+            (RVALID |-> (ar_addr_q[1:0] == 2'b00) || (RRESP != 2'b00))
             else $error("Misaligned read did not return an error response");
     end
 

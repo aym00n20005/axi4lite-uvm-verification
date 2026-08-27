@@ -20,3 +20,8 @@ per verification plan §7. A testbench that has never caught a bug is unproven.
 
 Numbering: spec §9 reserves 001–006 for the planned injections. Genuine finds
 continue the same sequence from 007.
+
+Both genuine finds so far are defects in the **protocol checker**, not the DUT,
+and both were false confidence rather than missed detection: BUG-007 was a
+cover point that could not fail to be covered, BUG-008 an assertion that failed
+on correct hardware. The checker gets the same scrutiny as the design.
