@@ -1,118 +1,61 @@
 # AXI4-Lite Peripheral Subsystem — UVM-Based Design Verification
 
-A UVM verification environment for an AXI4-Lite peripheral subsystem: an address-decoding interconnect, a register-file slave with mixed access policies (RW / RO / W1C), and a byte-addressable memory slave.
+A UVM verification environment for two AXI4-Lite slaves — a register file with mixed access policies (RW / RO / W1C) and a byte-addressable memory. The design is deliberately small so the effort goes into the methodology.
 
-**Status: in progress.** Spec frozen at v0.2 on 12 August 2026, currently v0.3 — see `docs/dut_spec.md` §10 for every revision and its rationale. See milestones below for what is and isn't built. Claims here are limited to what actually runs.
+**Status: in progress**, and the plan runs to December. The interconnect and the
+RAL model are **not built yet** — they are September and October milestones, and
+their absence is why `DECERR` is unreachable and two coverage bins stay open.
+Every figure below came from a run; nothing is projected.
 
-`SystemVerilog` · `UVM` · `SVA` · `UVM RAL` · `Functional Coverage` · `AXI4-Lite`
+`SystemVerilog` · `UVM` · `SVA` · `Functional Coverage` · `Constrained Random` · `AXI4-Lite`
 
 ---
 
 ## Why this project
 
-Verification, not design. The RTL is deliberately small so effort goes into methodology: a written verification plan that precedes the code, protocol assertions bound to the DUT, constrained-random stimulus with independent per-channel timing, a scoreboard with a reference model, a RAL register model, and a documented bug database proving the testbench actually catches things.
+Verification, not design.
 
-## Two tracks, one repository
+**Built and running:** a verification plan written before the code, 23 SVA
+assertions bound to the DUT, constrained-random stimulus with independent
+per-channel timing, a passive monitor that rebuilds transactions from pins only,
+a scoreboard whose reference model is derived from the specification rather than
+the RTL, a functional coverage model, and a bug database proving the testbench
+catches things.
 
-This repo contains the verification environment **and the flow that runs it**, because the second exists to serve the first:
+**Planned:** address-decoding interconnect (September), RAL register model
+generated from a YAML description (October), formal experiment (November).
 
-| Track | What it is | Where |
-|---|---|---|
-| **Verification** | UVM environment, SVA protocol checker, scoreboard, RAL, coverage model | `rtl/`, `tb/`, `docs/verification_plan.md` |
-| **Flow automation** | Regression runner, log parser with failure signatures, triage, register generator, coverage and vplan reporting | `scripts/`, [docs/automation_plan.md](docs/automation_plan.md) |
+## What the testbench found
 
-The automation is not a side project. Once there are more than a handful of tests and multiple seeds, running by hand stops being viable — coverage closure is only reachable through the regression flow, and the register bank, the RAL model and the register documentation are generated from one YAML source so they cannot drift apart. The automation track starts **after 31 August**; before then the only tooling here is `scripts/run_sim.sh` and a minimal `make test`.
+Nine bugs. Six planted deliberately to prove the environment works; **three
+real, and all three were in the testbench rather than the design.**
 
-## Architecture
+- **A cover point that could not fail to be covered.** The property meant to
+  prove the driver's threads run independently was satisfied by *any*
+  multi-transaction run, so it could never warn about anything. Qualifying it
+  dropped the hit count from **10 to 1** on identical stimulus.
+  ([BUG-007](docs/bug_reports/BUG-007.md))
+- **An assertion that failed on correct hardware.** Its timing window assumed a
+  delay the *master* controls and the spec does not bound. Found by random
+  traffic on its first run, and unreachable by every directed test that
+  existed — all of them used delays inside the window.
+  ([BUG-008](docs/bug_reports/BUG-008.md))
+- **A driver race that passed for eleven days on timing luck**, through 44
+  directed checks and 166 random transactions, until a second DUT shifted the
+  schedule. ([BUG-009](docs/bug_reports/BUG-009.md))
+- **Two contradictions in the frozen specification**, found while deriving the
+  architecture on paper — before any RTL existed. Both fixed in the document
+  first. ([dut_spec.md §10](docs/dut_spec.md))
 
-```
-                    ┌─────────────────────────────┐
-   AXI4-Lite        │                             │
-   Master ─────────▶│   AXI4-Lite Interconnect    │
-   (UVM agent)      │   (address decode + mux)    │
-                    └──────┬───────────────┬──────┘
-                           │               │
-                  0x0000_0000      0x0000_1000
-                           │               │
-                    ┌──────▼──────┐  ┌─────▼──────┐
-                    │  Register   │  │   Memory   │
-                    │  File Slave │  │   Slave    │
-                    │  RW/RO/W1C  │  │   1 KB     │
-                    └─────────────┘  └────────────┘
+Two results from the planted bugs are worth more than the detections:
 
-              0x0000_1400 and above → DECERR
-```
-
-## Verification environment
-
-```
-                        uvm_test
-                           │
-                       axi_env
-        ┌──────────────┬────┴─────┬──────────────┐
-        │              │          │              │
-  axi_master_agent  scoreboard  coverage     axi_reg_block
-   ┌────┴────┐      (ref model)  collector      (RAL)
-   │sequencer│                                     │
-   │ driver  │◀────────── reg_adapter ─────────────┘
-   │ monitor │
-   └────┬────┘
-        │
-    axi4lite_if ──── axi4lite_protocol_checker (SVA, bound)
-        │
-       DUT
-```
-
-**Driver design note:** one thread per AXI channel (`fork ... join_none`), not a single sequential FSM. AW and W are independent channels in AXI4-Lite; driving them in lockstep would never exercise W-before-AW ordering and would hide slave-side ordering bugs. The cover property `c_w_before_aw` exists to prove the threads are genuinely independent.
-
-## Key design decisions
-
-Each of these is a deliberate scope choice, recorded so it is never mistaken for an oversight:
-
-| Decision | Rationale |
-|---|---|
-| AXI4-Lite, not full AXI | Establish methodology before protocol complexity. Bursts and IDs are a planned extension. |
-| One outstanding read + one outstanding write | Keeps reorder buffers and response queues out of scope. |
-| `COUNTER` is 16-bit, not 32-bit | A 32-bit counter overflows after ~43 s of simulated time; the overflow event would be dead code and its coverage bin would never close. |
-| `STATUS.busy` covers the write path only | If it covered reads, reading `STATUS` would itself be an in-flight read and the bit could never read 0. |
-| `BVALID`/`RVALID` assert no earlier than one cycle after their accepts | Registered slave. The AMBA spec permits same-cycle for a combinational slave; excluded here so the checker can use registered pending-flags. |
-| Unmapped gap at `0x1400`–`0x1FFF` | Makes the address decode non-trivial and the DECERR path reachable from a plausible-looking address. |
-
-## Repository layout
-
-```
-axi4lite-uvm-verification/
-├── rtl/
-│   ├── axi4lite_reg_slave.sv
-│   ├── axi4lite_mem_slave.sv
-│   └── axi4lite_interconnect.sv
-├── tb/
-│   ├── interface/          # axi4lite_if.sv + bound protocol checker
-│   ├── agent/              # transaction, sequencer, driver, monitor, agent
-│   ├── sequences/
-│   ├── env/                # env, scoreboard, coverage
-│   ├── ral/                # uvm_reg_block + adapter
-│   └── tests/
-├── docs/
-│   ├── verification_plan.md
-│   ├── dut_spec.md
-│   ├── automation_plan.md
-│   └── bug_reports/
-├── scripts/                # run_sim.sh today; Makefile + Python flow from September
-└── README.md
-```
-
-## Milestones
-
-| Target | Verification | Flow automation | Status |
-|---|---|---|---|
-| 31 Aug 2026 | Both slaves' RTL, UVM agent, smoke test passing, protocol checker bound and proven by a deliberate break | `make test` only — nothing else before DVCon | in progress |
-| 30 Sep 2026 | Interconnect, decode, DECERR, scoreboard with reference model | Regression runner (parallel seeds, `results.json`), log parser with failure signatures | not started |
-| 31 Oct 2026 | RAL model, coverage model, backpressure randomisation | Failure-signature triage; register generator emitting RTL bank + RAL + docs from `regmap.yaml` | not started |
-| 30 Nov 2026 | Coverage closure, bug database, formal experiment | Coverage trend reporting, vplan traceability matrix, measured LLM triage assist | not started |
-| 31 Dec 2026 | Documentation complete | Toolkit documented and cleaned up | not started |
-
-The October RAL model is *generated*, not hand-written — that is the point at which the two tracks stop being parallel and start depending on each other.
+- Injecting a real defect and removing **one stimulus case** left a correct,
+  bound assertion silent while **31 of 31 checks passed** on a broken design. A
+  checker constrains nothing if the stimulus never reaches the corner.
+  ([BUG-002](docs/bug_reports/BUG-002.md))
+- A protocol violation injected into the driver passed **every functional check
+  with `UVM_ERROR: 0`**. Functional correctness and protocol compliance are
+  independent properties. ([BUG-001](docs/bug_reports/BUG-001.md))
 
 ## Results
 
@@ -141,6 +84,137 @@ is reported as skipped rather than silently passed.
 that could not fail to look good, one checker that cried wolf on a correct DUT.
 The checker gets the same scrutiny as the design.
 
+## Architecture
+
+The target subsystem. **Solid boxes exist and are verified; the dashed one does
+not exist yet.**
+
+```
+                    ╔═════════════════════════════╗
+   AXI4-Lite        ║   AXI4-Lite Interconnect    ║  <-- NOT BUILT
+   Master ─────────▶║   (address decode + mux)    ║      September milestone
+   (UVM agent)      ╚══════╤═══════════════╤══════╝
+                           ┊               ┊
+                  0x0000_0000      0x0000_1000
+                           ┊               ┊
+                    ┌──────▼──────┐  ┌─────▼──────┐
+                    │  Register   │  │   Memory   │   both built, both
+                    │  File Slave │  │   Slave    │   verified against a
+                    │  RW/RO/W1C  │  │   1 KB     │   spec-derived model
+                    └─────────────┘  └────────────┘
+
+              0x0000_1400 and above → DECERR
+              (unreachable until the interconnect exists — neither slave
+               contains a code path that can emit it, by design)
+```
+
+**Today** each UVM test drives one slave directly: `tb_top` for the register
+file, `tb_top_mem` for the memory. Nothing routes, so each slave decodes the
+whole address space onto its own offset — correct behaviour, and the reason
+`cg_address_region` records addresses *issued* rather than traffic *routed*.
+That distinction is written up rather than glossed over, in
+[coverage status](docs/coverage_status.md).
+
+## Verification environment
+
+**Solid exists and runs; dashed is planned.**
+
+```
+                        uvm_test
+                           │
+                       axi_env
+        ┌──────────────┬────┴─────┬─ ─ ─ ─ ─ ─ ─ ┐
+        │              │          │
+  axi_master_agent  scoreboard  coverage     axi_reg_block
+   ┌────┴────┐      (ref model)  collector      (RAL)      <-- NOT BUILT
+   │sequencer│                                     ┊           October
+   │ driver  │◀ ─ ─ ─ ─ ─  reg_adapter  ─ ─ ─ ─ ─ ─┘
+   │ monitor │
+   └────┬────┘
+        │
+    axi4lite_if ──── axi4lite_protocol_checker (SVA, bound)
+        │
+       DUT
+```
+
+**Driver design note:** one thread per AXI channel (`fork ... join_none`), not a single sequential FSM. AW and W are independent channels in AXI4-Lite; driving them in lockstep would never exercise W-before-AW ordering and would hide slave-side ordering bugs. The cover property `c_w_before_aw` exists to prove the threads are genuinely independent.
+
+## Key design decisions
+
+Each of these is a deliberate scope choice, recorded so it is never mistaken for an oversight:
+
+| Decision | Rationale |
+|---|---|
+| AXI4-Lite, not full AXI | Establish methodology before protocol complexity. Bursts and IDs are a planned extension. |
+| One outstanding read + one outstanding write | Keeps reorder buffers and response queues out of scope. |
+| `COUNTER` is 16-bit, not 32-bit | A 32-bit counter overflows after ~43 s of simulated time; the overflow event would be dead code and its coverage bin would never close. |
+| `STATUS.busy` covers the write path only | If it covered reads, reading `STATUS` would itself be an in-flight read and the bit could never read 0. |
+| `BVALID`/`RVALID` assert no earlier than one cycle after their accepts | Registered slave. The AMBA spec permits same-cycle for a combinational slave; excluded here so the checker can use registered pending-flags. |
+| Unmapped gap at `0x1400`–`0x1FFF` | Makes the address decode non-trivial and the DECERR path reachable from a plausible-looking address. |
+
+## Two tracks, one repository
+
+This repo contains the verification environment **and the flow that runs it**, because the second exists to serve the first:
+
+| Track | What it is | Where |
+|---|---|---|
+| **Verification** | UVM environment, SVA protocol checker, scoreboard, coverage model; RAL from October | `rtl/`, `tb/`, `docs/verification_plan.md` |
+| **Flow automation** | Regression runner, log parser with failure signatures, triage, register generator, coverage and vplan reporting | `scripts/`, [docs/automation_plan.md](docs/automation_plan.md) |
+
+The automation is not a side project. Once there are more than a handful of tests and multiple seeds, running by hand stops being viable — coverage closure is only reachable through the regression flow, and the register bank, the RAL model and the register documentation are generated from one YAML source so they cannot drift apart. The automation track starts **after 31 August**; before then the only tooling here is `scripts/run_sim.sh` and a minimal `make test`.
+
+## Repository layout
+
+```
+axi4lite-uvm-verification/
+├── rtl/
+│   ├── axi4lite_reg_slave.sv      8 registers, RW/RO/W1C, error precedence
+│   └── axi4lite_mem_slave.sv      256 words, WSTRB byte masking
+├── tb/
+│   ├── interface/                 axi4lite_if.sv + protocol checker, one bind per slave
+│   ├── agent/                     transaction, sequencer, driver, monitor, agent
+│   ├── sequences/                 smoke, random and memory sequences
+│   ├── env/                       env, scoreboard, coverage collector
+│   ├── tests/                     3 UVM tests + two testbench tops
+│   ├── uvm/                       standalone benches: UVM hello, constraint smoke, BUG-006 minimal
+│   ├── sanity_tb.sv               non-UVM smoke bench, register slave
+│   └── sanity_mem_tb.sv           non-UVM smoke bench, memory slave
+├── docs/                          spec, plan, architecture notes, 7 bug reports, walkthrough
+├── scripts/run_sim.sh             local Verilator / Icarus flow
+├── Makefile                       make test | coverage | lint | playground
+└── README.md
+```
+
+**Not yet built**, and named here so their absence is not mistaken for an
+oversight: `rtl/axi4lite_interconnect.sv` (September, and until it exists
+`DECERR` is unreachable), and `tb/ral/` (October, generated from a YAML register
+description rather than hand-written).
+
+## Milestones
+
+Status as of 28 August 2026. Several later items were pulled forward; the ones
+that were not are blocked on components that do not exist, not on effort.
+
+| Target | Verification | Flow automation | Status |
+|---|---|---|---|
+| 31 Aug 2026 | Both slaves' RTL, UVM agent, smoke test passing, protocol checker bound and proven by a deliberate break | `make test` only — nothing else before DVCon | **complete** (20 Aug) |
+| 30 Sep 2026 | Interconnect, decode, DECERR, scoreboard with reference model | Regression runner (parallel seeds, `results.json`), log parser with failure signatures | **scoreboard done early**; interconnect not started |
+| 31 Oct 2026 | RAL model, coverage model, backpressure randomisation | Failure-signature triage; register generator emitting RTL bank + RAL + docs from `regmap.yaml` | **coverage model done early**; RAL not started |
+| 30 Nov 2026 | Coverage closure, bug database, formal experiment | Coverage trend reporting, vplan traceability matrix, measured LLM triage assist | **bug database done early** (7 reports); closure partial; formal not started |
+| 31 Dec 2026 | Documentation complete | Toolkit documented and cleaned up | **substantially done early** |
+
+Pulled forward because they turned out to be prerequisites rather than
+successors: the scoreboard was needed before random traffic meant anything, the
+coverage model before "how much have I tested" could be answered with a number,
+and the bug database from the first injection onward, because a bug written up
+a week later is a bug half-remembered.
+
+Still blocked, and each blocks something specific: the **interconnect** blocks
+`DECERR`, two coverage bins and BUG-005; the **RAL** blocks BUG-004. Neither is
+a time problem.
+
+The October RAL model is *generated*, not hand-written — that is the point at which the two tracks stop being parallel and start depending on each other.
+
 ## Tools
 
 - **UVM simulation:** EDA Playground with **Cadence Xcelium** (CDNS-UVM-1.2). Aldec Riviera-PRO compiles UVM there but cannot simulate it — the free entitlement excludes class-based simulation, signed in or not. Measured 19 Aug; see [tooling notes](docs/tooling_notes.md).
@@ -151,11 +225,20 @@ The checker gets the same scrutiny as the design.
 
 ## Documentation
 
-- [Verification plan](docs/verification_plan.md) — features F01–F29, methods, coverage model, test list, open questions
-- [DUT specification](docs/dut_spec.md) — the source of truth for all DUT behaviour
-- [Automation plan](docs/automation_plan.md) — the regression, triage and register-generation flow that runs the above
-- [Tooling notes](docs/tooling_notes.md) — measured simulator capability, not assumed
-- [Bug reports](docs/bug_reports/) — every bug, injected or genuine, with evidence and root cause
+**Start here:** [project walkthrough](docs/project_walkthrough.md) — the whole
+project explained from zero, including every bug and what it taught.
+
+| | |
+|---|---|
+| [DUT specification](docs/dut_spec.md) | source of truth; §10 is the revision history with a test per revision |
+| [Verification plan](docs/verification_plan.md) | features F01–F29, coverage model, test list |
+| [Bug reports](docs/bug_reports/) | 7 written up, injected and genuine |
+| [Coverage status](docs/coverage_status.md) | measured, with a written justification per open bin |
+| [Tooling notes](docs/tooling_notes.md) | measured simulator capability, not assumed |
+| [Register slave architecture](docs/reg_slave_architecture.md) · [memory slave](docs/mem_slave_architecture.md) | design decided on paper before RTL |
+| [UVM agent design](docs/uvm_agent_design.md) · [UVM fundamentals](docs/uvm_fundamentals.md) | testbench decisions and the concepts behind them |
+| [Automation plan](docs/automation_plan.md) | the regression and codegen flow, September onward |
+| [One-page brief](docs/one_pager.pdf) | printable A4 summary |
 
 ## References
 
