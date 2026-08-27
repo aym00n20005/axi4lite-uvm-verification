@@ -27,7 +27,24 @@ is that record.
 
 Two groups, three bins, **one cause**.
 
-### `cg_address_region` — `REGION_MEM`, `REGION_UNMAPPED_LOW`, `REGION_UNMAPPED_HIGH`
+### `cg_address_region` — all five bins hit, and that is misleading
+
+**Updated 23 August.** `axi_random_test` drives addresses across the whole map,
+so all five bins now report covered. **This does not mean those regions are
+verified**, and the number should not be read as if it did.
+
+The coverage model classifies by the address the master issued, which is what
+vplan §5 asks for. But `tb_top` instantiates only the register slave, so a
+transaction to `0x1078` is not routed to memory — it aliases onto the register
+slave's `ADDR[11:0]` decode and is answered, correctly, as register traffic. The
+bin records that an address in the memory range was *issued*, not that the
+memory slave *served* it.
+
+A green `cg_address_region` while the memory slave is absent from the DUT is
+exactly the failure mode BUG-007 was: a metric that cannot fail to look good.
+The honest statement is below, and it is unchanged by the random run.
+
+### `REGION_MEM`, `REGION_UNMAPPED_LOW`, `REGION_UNMAPPED_HIGH` — not routed
 
 `tb/tests/tb_top.sv` instantiates `axi4lite_reg_slave` and nothing else. There
 is no interconnect, so no address decode exists to route a transaction to the

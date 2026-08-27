@@ -120,21 +120,26 @@ The October RAL model is *generated*, not hand-written — that is the point at 
 
 | Metric | Value |
 |---|---|
-| Tests passing | **44 UVM checks** (`axi_smoke_test`, Xcelium 25.03, scoreboard + monitor + bound SVA) · 58 non-UVM smoke checks — 31 register, 27 memory — under both Icarus 13.0 and Verilator 5.050 |
-| Functional coverage | **6 of 8 groups at 100%** (`cg_wstrb` 16/16, exceeding its ≥90% goal); the 2 remaining gaps are structural and justified in [coverage status](docs/coverage_status.md) |
-| Code coverage | not started — needs a commercial simulator |
-| Bugs found and root-caused | 1 genuine ([BUG-007](docs/bug_reports/BUG-007.md), checker cover defect); 4 injected and detected ([BUG-002](docs/bug_reports/BUG-002.md), BUG-003, v0.2 decode, write-data bypass) |
+| UVM tests | `axi_smoke_test` **44/44 checks** · `axi_random_test` **166 constrained-random transactions, 0 scoreboard mismatches** (Xcelium 25.03) |
+| Non-UVM smoke | **58 checks** — 31 register, 27 memory — under both Icarus 13.0 and Verilator 5.050 |
+| Functional coverage | 8 groups measured per test. `axi_smoke_test` closes 6/8; `axi_random_test` closes 6/8 on a different set. Every open bin justified in [coverage status](docs/coverage_status.md) |
+| Code coverage | not started — needs a commercial simulator invoked with coverage enabled |
+| Bugs found and root-caused | **2 genuine, both in the protocol checker** — [BUG-007](docs/bug_reports/BUG-007.md), a cover point that could not fail to be covered; [BUG-008](docs/bug_reports/BUG-008.md), an assertion that failed on correct hardware, found by random traffic on its first run. Plus 4 injected and detected ([BUG-002](docs/bug_reports/BUG-002.md), BUG-003, v0.2 decode, write-data bypass) |
 
-**Read these narrowly.** The 23 UVM checks are one directed test against the
-register slave, with a spec-derived scoreboard and the protocol checker bound —
-real verification, but one test. The 58 non-UVM checks prove the RTL breathes
-and nothing more. Neither number is a coverage figure; see
-[tooling notes](docs/tooling_notes.md) for what the cover model actually reaches.
+**Read these narrowly.** Two UVM tests against one slave — the memory slave is
+not yet in the UVM environment, and there is no interconnect, so `DECERR` and
+routed memory traffic are unreachable. Coverage is per-test and not merged;
+merging across a regression is a September job. Neither number is a closure
+figure.
 
 Every response is checked against a reference model derived from the spec, fed
 by a monitor that reconstructs from pins and has no access to the driver. Read
 data the model **cannot** predict — `COUNTER`, `STATUS.busy`, `INT_STATUS[3]` —
 is reported as skipped rather than silently passed.
+
+**Both genuine bugs were false confidence, not missed detection.** One metric
+that could not fail to look good, one checker that cried wolf on a correct DUT.
+The checker gets the same scrutiny as the design.
 
 ## Tools
 
