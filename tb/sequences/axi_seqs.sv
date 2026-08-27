@@ -261,6 +261,47 @@ class axi_smoke_seq extends axi_base_seq;
         // the verification plan's test list lays them out; one sequence
         // is right while there is one test.
         //--------------------------------------------------------------
+        // F26, and the section 9 obligation BUG-006 sits on.
+        //
+        // COUNTER is free-running and normally unpredictable. In ONE
+        // state it is not: after reset_stats with enable clear it is 0
+        // and frozen, so every read must return exactly 0. That is the
+        // only window in which this bug is visible, and it is why spec
+        // section 9 assigns BUG-006 to a directed test.
+        //
+        // The scoreboard now models the same window, so the bug is caught
+        // twice over -- by the check below and by the reference model.
+        //--------------------------------------------------------------
+        `uvm_info("SMOKE", "---- reset_stats clears COUNTER (F26, BUG-006) ----", UVM_LOW)
+
+        // enable is still 1 from the section above, so the counter has
+        // been running. Clear it AND stop it in one write: reset_stats
+        // has priority over increment (spec section 5).
+        write(`A_CTRL, 32'h0000_0002, 4'b1111, r, 0, 0);
+        check("CTRL reset_stats write OKAY", {30'b0, r}, 32'h0);
+
+        read(`A_COUNTER, d, r);
+        check("reset_stats cleared COUNTER",      d, 32'h0000_0000);
+
+        // Still 0 several transactions later: enable is clear, so it is
+        // frozen rather than merely passing through zero.
+        //
+        // Note what the failure looks like -- the CTRL=0x2 write clears
+        // enable too, so a COUNTER that reset_stats failed to clear
+        // freezes at its old value rather than climbing. Measured under
+        // BUG-006 on 27 Aug: 0x15 on both reads, not a rising count.
+        read(`A_SCRATCH, d, r);
+        read(`A_COUNTER, d, r);
+        check("COUNTER frozen while disabled",    d, 32'h0000_0000);
+
+        // enable and reset_stats together: result is 0 on that cycle, and
+        // enable survives (spec section 5 -- the two bits are
+        // independently testable).
+        write(`A_CTRL, 32'h0000_0003, 4'b1111, r, 0, 0);
+        read(`A_CTRL, d, r);
+        check("reset_stats did not disturb enable", d, 32'h0000_0001);
+
+        //--------------------------------------------------------------
         `uvm_info("SMOKE", "---- WSTRB sweep, all 16 patterns (F16, cg_wstrb) ----", UVM_LOW)
 
         // Spec section 5: only 4'b1111 is a legal register write. The

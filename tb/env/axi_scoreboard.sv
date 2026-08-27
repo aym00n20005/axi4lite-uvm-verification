@@ -31,8 +31,17 @@
 //
 //   COUNTER   increments every clock while CTRL.enable (spec section 5).
 //             A transaction-level model sees transactions, not cycles,
-//             so it cannot know the value. Data comparison is skipped
-//             entirely; the RESPONSE is still checked.
+//             so it usually cannot know the value.
+//
+//             EXCEPT in one state. After a reset_stats write with enable
+//             clear, COUNTER is 0 and frozen there, and every read must
+//             return exactly 0 until enable is set again. That state is
+//             fully predictable and IS checked -- it is what catches
+//             BUG-006, a COUNTER that reset_stats fails to clear.
+//
+//             "Unpredictable" was too coarse. The honest model is
+//             "unpredictable except when it isn't", and the difference is
+//             an entire section 9 obligation.
 //
 //   STATUS[0] busy is 1 while a write is in flight (spec section 5) --
 //             cycle-level state. Masked.
@@ -76,6 +85,11 @@ class axi_scoreboard extends uvm_component;
     bit [3:0]  m_int_status   = 4'h0;
     bit [31:0] m_scratch      = 32'h0;
     bit        m_status_error = 1'b0;
+
+    // True while COUNTER is known to be exactly 0: cleared by reset_stats
+    // (or by reset) and not running because enable is clear. Spec section 5.
+    // Starts true -- reset leaves COUNTER at 0 with enable clear.
+    bit        m_counter_zero = 1'b1;
 
     //------------------------------------------------------------------
     // Memory model -- spec section 6. An associative array, per vplan
@@ -252,7 +266,16 @@ class axi_scoreboard extends uvm_component;
         if (exp_resp == SB_OKAY) begin
             idx = reg_index(t.addr);
             case (idx)
-                SB_CTRL       : m_ctrl_enable = t.data[0];   // [1] self-clearing
+                SB_CTRL       : begin
+                    m_ctrl_enable = t.data[0];   // [1] is self-clearing
+                    // Order matters and mirrors the RTL's branch order.
+                    // reset_stats has priority over increment on its own
+                    // cycle, but if enable is also set the counter starts
+                    // running immediately afterwards and is unknown again.
+                    if      (t.data[0]) m_counter_zero = 1'b0;  // enabled: runs
+                    else if (t.data[1]) m_counter_zero = 1'b1;  // cleared, frozen
+                    // else: frozen at whatever it was -- state unchanged
+                end
                 SB_CONFIG     : m_config      = t.data[7:0];
                 SB_INT_ENABLE : m_int_enable  = t.data[3:0];
                 SB_SCRATCH    : m_scratch     = t.data;
@@ -317,7 +340,8 @@ class axi_scoreboard extends uvm_component;
                 end
                 SB_COUNTER    : begin
                     exp_data = 32'h0;
-                    mask     = 32'h0;            // free-running: unpredictable
+                    // Checkable only in the cleared-and-frozen state.
+                    mask     = m_counter_zero ? 32'hFFFF_FFFF : 32'h0;
                 end
                 default : begin exp_data = 32'h0; mask = 32'h0; end
             endcase
