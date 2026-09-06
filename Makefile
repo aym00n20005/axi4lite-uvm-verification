@@ -8,7 +8,12 @@
 #   make test TEST=mem        memory slave only
 #   make test TEST=sys        interconnect + both slaves (DECERR lives here)
 #   make test SIM=icarus      functional only; Icarus cannot do SVA
-#   make coverage             cover-property counts
+#   make regression           parallel multi-seed, results.json
+#   make triage               what actually broke
+#   make coverage             cover properties + functional, with a trend
+#   make vplan                feature -> test -> result matrix
+#   make import-log LOG=..    bring a UVM log in from EDA Playground
+#   make all                  everything that needs no person
 #   make lint                 Verilator -Wall on the RTL
 #   make playground PLAY=x    bundle UVM for EDA Playground
 #                             sys | ral | rand      <- the three that matter
@@ -28,6 +33,7 @@
 
 SIM  ?= verilator
 TEST ?= all
+JOBS ?= 8
 
 # The register slave imports axi4lite_reg_pkg, so the two are one lint
 # unit. The memory slave has no register map and stands alone.
@@ -36,7 +42,8 @@ LINT_reg := $(REG_PKG) rtl/axi4lite_reg_slave.sv
 LINT_mem := rtl/axi4lite_mem_slave.sv
 LINT_ic  := rtl/axi4lite_interconnect.sv
 
-.PHONY: test coverage lint clean help playground setup elab regmap regcheck
+.PHONY: test coverage cover-quick lint clean help playground setup elab \
+        regmap regcheck regression triage vplan test-scripts import-log all docs
 
 #---------------------------------------------------------------------
 # One-time toolchain. Idempotent: brew and fetch_uvm.sh both no-op when
@@ -60,8 +67,65 @@ elab:
 test:
 	@./scripts/run_sim.sh $(SIM) $(TEST)
 
+#---------------------------------------------------------------------
+# The flow. docs/automation_plan.md T1-T6.
+#---------------------------------------------------------------------
+
+# T1. Parallel, multi-seed, exit code. Local runs are launched; UVM runs
+# are imported from sim/logs/ because no local simulator runs UVM.
+regression:
+	@python3 scripts/run_regression.py --jobs $(JOBS)
+
+# T3. What actually broke: clusters, new-since-last-run, flaky, stale.
+triage:
+	@python3 scripts/triage.py $(TRIAGE_ARGS)
+
+# T5. Cover properties from Verilator + the UVM hand tally, with a trend.
 coverage:
+	@python3 scripts/coverage_report.py
+
+# The old behaviour, when you just want the counts on one bench.
+cover-quick:
 	@./scripts/run_sim.sh verilator $(TEST) --coverage
+
+# T6. feature -> test -> result. The one that answers "are we done".
+vplan:
+	@python3 scripts/vplan_trace.py
+
+# T2's test suite. The parser everything else is built on.
+test-scripts:
+	@python3 scripts/test_parse_log.py
+
+#---------------------------------------------------------------------
+# Bring a UVM log in from EDA Playground.
+#
+#   make import-log LOG=~/Downloads/sys.log TEST=axi_regression_test
+#
+# This is the ONE manual step in the flow and the Makefile says so
+# rather than hiding it. UVM cannot be simulated locally -- Icarus and
+# Verilator have no UVM support -- so somebody has to paste two panes
+# into a browser. Everything before that point is `make elab`;
+# everything after it is automated.
+#---------------------------------------------------------------------
+LOG  ?=
+TEST_NAME ?= $(TEST)
+
+import-log:
+	@if [ -z "$(LOG)" ]; then 	  echo "usage: make import-log LOG=<file> TEST=<axi_regression_test|axi_ral_test|axi_multiseed_test>"; exit 2; fi
+	@if [ ! -f "$(LOG)" ]; then echo "import-log: no such file: $(LOG)"; exit 2; fi
+	@mkdir -p sim/logs
+	@case "$(TEST)" in 	  axi_regression_test) dest=sim/logs/sys.log  ;; 	  axi_ral_test)        dest=sim/logs/ral.log  ;; 	  axi_multiseed_test)  dest=sim/logs/rand.log ;; 	  *) echo "import-log: TEST must be axi_regression_test, axi_ral_test or axi_multiseed_test"; exit 2 ;; 	esac; 	cp "$(LOG)" "$$dest"; 	echo "  imported $(LOG) -> $$dest"; 	python3 scripts/parse_log.py "$$dest"
+
+#---------------------------------------------------------------------
+# Everything that can run without a person, in dependency order.
+#---------------------------------------------------------------------
+all: regcheck elab lint test-scripts regression triage coverage vplan
+	@echo ""
+	@echo "  all: done. docs/traceability.md is the one to read."
+
+# Regenerate every generated document from what has been measured.
+docs: regmap coverage vplan
+	@echo "docs: register_map.md, coverage_report.md, traceability.md"
 
 # One slave at a time: linting both together trips MULTITOP, since each
 # is a legitimate top in its own right.
@@ -271,5 +335,7 @@ clean:
 	@rm -rf $${TMPDIR:-/tmp}/axi4lite_vbuild
 	@echo "clean: done"
 
+# Print the header block, however long it happens to be, instead of a
+# fixed line range that silently truncates every time a target is added.
 help:
-	@sed -n '4,11p' Makefile | sed 's/^# \?//'
+	@sed -n '/^#   make setup/,/^#   make clean/p' Makefile | sed 's/^# \?//'
