@@ -3,7 +3,7 @@
 **GENERATED** by `scripts/vplan_trace.py`. Do not edit — run `make vplan`.
 
 Features from [verification_plan.md §3](verification_plan.md); claims from
-`scripts/testlist.yaml`; results from regression `20260907_040830`.
+`scripts/testlist.yaml`; results from regression `20260907_041510`.
 
 The rows that matter are the ones that are **not** green. A matrix built from
 the tests that exist is green by construction; this one is built from the
