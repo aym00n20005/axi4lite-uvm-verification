@@ -1,11 +1,42 @@
 # DV Automation Toolkit — Plan
 
-**Version 0.2 · 17 August 2026**
-Companion to the AXI4-Lite UVM verification project. Same repository: this document lives in `docs/`, the code it describes lands in `scripts/`.
+**Version 1.0 — delivered.**
+Companion to the AXI4-Lite UVM verification project. Same repository: this
+document lives in `docs/`, the code it describes is in `scripts/`.
 
 **Revisions**
-- v0.2 (17 Aug 2026) — added §8, the listability gate and resume framing. No change to scope or schedule.
-- v0.1 (12 Aug 2026) — initial plan.
+- v1.0 — all six tools and the AI layer built and measured. §4's schedule and
+  §8's listability gate resolved against what exists; the rest of the document is
+  unchanged, because the reasoning it contains is what the tools were built to.
+- v0.2 — added §8, the listability gate and resume framing.
+- v0.1 — initial plan.
+
+---
+
+## 0a. Status
+
+Every component exists and runs. `make all` executes the whole flow with nobody
+in the loop.
+
+| | Tool | Status | Notes |
+|---|---|---|---|
+| T1 | `run_regression.py` | **done** | 16 runs, parallel, 12 s. Found a defect in `run_sim.sh` on its first use — ten parallel runs of one top shared a build directory |
+| T2 | `parse_log.py` | **done** | Four simulators, one signature vocabulary. Has its own test suite, `test_parse_log.py`, 11 cases of real output |
+| T3 | `triage.py` | **done** | Clustering, new-since-last-run, flaky, stale. Demonstrated on BUG-005: 952 failing checks → 13 signatures |
+| T4 | `regmap_gen.py` | **done** | One YAML → RTL package + UVM RAL + docs. `check_regmap.py` guards it against the spec |
+| T5 | `coverage_report.py` | **done** | Per-instance cover counts + the UVM hand tally, with a trend |
+| T6 | `vplan_trace.py` | **done** | F01–F29 → test → result, built from the *spec's* feature list |
+| A1 | `llm_triage.py` | **done, and measured** | 4/6 correct, 2/6 partial, 0/6 wrong — [llm_triage.md](llm_triage.md) |
+
+Two additions the plan did not anticipate, both of which turned out to matter
+more than anything in it:
+
+- **`scripts/elab.sh`** — local elaboration with slang. UVM cannot be simulated
+  locally, so every typo cost a browser round trip; this made the check 0.2
+  seconds and found [BUG-010](bug_reports/BUG-010.md) on its first run.
+- **`formal/run_formal.sh`** — bounded model check. It decides two spec §5 rules
+  that no test in this environment can, and it caught a defect that 4,576
+  simulation checks passed on. [formal_notes.md](formal_notes.md).
 
 ---
 
@@ -155,6 +186,14 @@ You have BUG-001 through BUG-006, each with a known root cause. Run A1 on each f
 
 Then publish the hit rate in your README. If it gets 3 of 6, say 3 of 6. **A measured negative result is a far better DVCon conversation than an unmeasured positive claim**, because it means you've actually thought about the limits — which is exactly the question the industry is asking itself this year.
 
+> **Done — 4 correct, 2 partial, 0 wrong.** [llm_triage.md](llm_triage.md) has
+> the per-bug detail, and it also records the **two measurements before that one
+> that were invalid**: the first let the model read the repository (5/6, and
+> meaningless — it was measuring file access), and the second scored the whole
+> answer instead of the root-cause claim (5/6, where a hand review said 4/6).
+> Both flattered the result. Publishing the corrected number and the two that
+> were wrong is what this section asked for.
+
 ### What to avoid saying
 
 - "AI-generated assertions" — the immediate follow-up is *did you verify them, and against what?*
@@ -167,14 +206,19 @@ Then publish the hit rate in your README. If it gets 3 of 6, say 3 of 6. **A mea
 
 ## 4. Schedule
 
+The schedule below is what was planned. It is kept as written, because the
+*ordering* was right and it is the reason each tool had something to serve:
+
 | Window | Build | Serves |
 |---|---|---|
-| Before 31 Aug | Nothing but a 20-line Makefile with `make test` | Keeps DVCon prep clear |
-| September | T1 regression runner, T2 log parser | The interconnect + scoreboard milestone |
-| October | T3 triage, T4 register generator | The RAL milestone — T4 generates it |
-| **Mid-Oct** | **Gate: T1, T2 and T4 exist and run** | **The point this becomes listable — see §8** |
-| November | T5 coverage reporting, T6 vplan traceability, A1 with measurement | Coverage closure + bug database |
-| December | Documentation, README, clean-up | Interview readiness |
+| Before the conference | Nothing but a 20-line Makefile with `make test` | Keeps preparation clear |
+| Next | T1 regression runner, T2 log parser | The interconnect + scoreboard milestone |
+| Then | T3 triage, T4 register generator | The RAL milestone — T4 generates it |
+| **Gate** | **T1, T2 and T4 exist and run** | **The point this becomes listable — see §8** |
+| Then | T5 coverage reporting, T6 vplan traceability, A1 with measurement | Coverage closure + bug database |
+| Last | Documentation, README, clean-up | Interview readiness |
+
+**All of it is built.** The gate in the middle row is passed.
 
 ---
 
@@ -251,15 +295,20 @@ They share a repo. A DV manager will notice within thirty seconds of opening Git
 
 So: two resume entries, one repo, and the second entry says out loud that it automates the first. The README carries the same framing so the repo confirms the resume rather than contradicting it.
 
-### What's honestly claimable, by when
+### What's honestly claimable
 
-| Date | Verification project | Automation toolkit |
-|---|---|---|
-| 31 Aug 2026 | "in progress" — agent + assertions | not listable |
-| Mid-Oct 2026 | Full env, scoreboard, RAL | T1, T2, T4 — listable |
-| Dec 2026 | Complete, with coverage closure | Full toolkit |
+The gate is passed: T1, T2 and T4 exist and run, and so do T3, T5, T6 and A1.
+Both entries are listable in full.
 
-Applications open in October, so at submission time the first two toolkit bullets will likely be solid and the third in progress. **Write bullets for what exists on the day you send it**, and update them between applications rather than writing December's resume in October. Draft bullets live in `docs/resume_bullets.md` (untracked — it changes per application).
+The rule that produced the gate still applies to anything added later: **write
+bullets for what exists on the day you send it.** Draft bullets live in
+`docs/resume_bullets.md` (untracked — it changes per application).
+
+One thing worth claiming that this plan did not foresee: the strongest single
+result in the repository is a *negative* one. 4,576 simulation checks passed on a
+design with a real defect in it, and the bounded model check found it in under a
+second. That is a better answer to "how do you know your testbench works" than
+any coverage percentage.
 
 ### One structural note
 

@@ -1,20 +1,111 @@
 # Local Tooling — measured capability
 
-**16 Aug 2026**, cover counts updated 17 Aug, UVM simulator 19 Aug. Measured, not assumed. Every
-claim here was produced by running the tool on this project's own files.
+Measured, not assumed. Every claim here was produced by running the tool on this
+project's own files, and the entries that cost the most time are the ones about
+what a tool *accepts* rather than what it rejects.
 
 ---
 
-## Simulator capability
+## Tool capability
 
-| Tool | Version | Functional sim | Concurrent SVA | Cover properties | UVM |
-|---|---|---|---|---|---|
-| Icarus Verilog | 13.0 | yes | **no** | no | no |
-| Verilator | 5.050 | yes | **yes** | yes | no |
-| Riviera-PRO (EDA Playground) | 2025.04 | yes | yes | yes | compiles only |
-| Xcelium (EDA Playground) | 25.03 | yes | yes | yes | **yes** |
+| Tool | Version | Functional sim | Concurrent SVA | Cover properties | UVM | Elaboration | Formal |
+|---|---|---|---|---|---|---|---|
+| Icarus Verilog | 13.0 | yes | **no** | no | no | — | no |
+| Verilator | 5.050 | yes | **yes** | yes | no | yes | no |
+| slang | 11.0 | **no** | parses | parses | **elaborates** | **yes** | no |
+| Yosys + z3 | 0.68 / 5.1.0 | no | **no** | no | no | limited | **yes** |
+| Riviera-PRO (EDA Playground) | 2025.04 | yes | yes | yes | compiles only | yes | no |
+| Xcelium (EDA Playground) | 25.03 | yes | yes | yes | **yes** | yes | no |
 
-### Icarus cannot run this checker
+Six tools, and no two of them can do the same job. That is the shape of the
+whole flow: `make elab` is slang, `make test` and `make regression` are
+Verilator, `make formal` is Yosys, and the UVM environment is Xcelium in a
+browser.
+
+---
+
+## slang — the elaboration gate
+
+**Added 6 September.** slang cannot simulate. It elaborates, which turns out to
+be most of the value: UVM runs only on EDA Playground, by hand, so every typo
+used to cost a browser round trip measured in minutes. slang elaborates the
+generated bundle — byte for byte, the same file that gets pasted — in about a
+fifth of a second.
+
+```
+  sys          Build succeeded: 0 errors, 2 warnings  top=tb_top_sys
+  ral          Build succeeded: 0 errors, 2 warnings  top=tb_top_sys
+  rand         Build succeeded: 0 errors, 2 warnings  top=tb_top_sys
+  ...
+elab: all bundles elaborate -- 0 errors
+```
+
+Two flags are load-bearing and neither is cosmetic:
+
+- **`--timescale=1ns/1ps`.** Only `rtl/axi4lite_reg_slave.sv` declares a
+  `` `timescale ``, and slang treats a partially-timescaled design as an error
+  because its semantics are then tool-dependent. Xcelium applies its own default
+  and says nothing.
+- **`-I third_party/uvm-1.2/src`.** UVM **1.2**, matching the CDNS-UVM-1.2 that
+  Xcelium actually supplies. Elaborating against 2020-2.0 would report errors
+  Xcelium will not and miss ones it will.
+
+### What it found on its first run
+
+Two errors, one defect: `soft (a) -> b dist {...}` in `axi_transaction.sv`
+selects the wrong production of IEEE 1800-2017's constraint grammar. Xcelium
+accepts it; every number this project had published came through it. See
+[BUG-010](bug_reports/BUG-010.md).
+
+**The general lesson is worth more than the bug.** Until 6 September everything
+here had been validated by exactly one simulator, which means it had been
+validated against that simulator's *extensions* as much as against the language.
+A second conformant front end is cheap insurance, and 0.2 seconds is not a
+budget item.
+
+It has since caught three more portability traps that no simulation would have:
+a class property referenced above its own declaration, a `wire` referenced above
+its declaration in the interconnect, and the same in a sequence.
+
+---
+
+## Yosys — the formal frontend, and its limits
+
+**Added 6 September.** Yosys 0.68 with `yosys-smtbmc` and Z3 5.1.0, all from
+Homebrew. SymbiYosys is *not* installed: it drives `yosys-smtbmc`, which ships
+with Yosys, so calling that directly removes a source-build dependency.
+
+**Yosys's open-source frontend supports no concurrent SVA at all.** Measured, one
+form at a time:
+
+| Written | Yosys |
+|---|---|
+| `default clocking @(posedge ACLK); endclocking` | `ERROR: unexpected TOK_DEFAULT` |
+| `assert property (@(posedge ACLK) …);` | `ERROR: unexpected '@'` |
+| `assert (a \|=> b);` | `ERROR: unexpected TOK_BIT_OR_ASSIGN` |
+| `property pr; … endproperty` | `ERROR: unexpected TOK_PROPERTY` |
+| `import pkg::*;` inside a module | `ERROR: unexpected TOK_IMPORT` |
+| a wrapper referencing `dut.signal` | `ERROR: Identifier is implicitly declared` |
+| `bind` | no support |
+
+What it accepts in `-formal` mode is the **immediate** assertion inside a clocked
+`always` block, plus `$past`. The consequences and the full write-up are in
+[formal_notes.md](formal_notes.md); the short version is that the 23 assertions
+in `axi4lite_if.sv` cannot be reused, so the formal properties are a separate,
+deliberately small set.
+
+Two further requirements, both traceable to spec §1's reset contract:
+
+- **`async2sync; dffunmap` before `write_smt2`.** An asynchronous reset infers
+  `$adff` cells, which `write_smt2` cannot model.
+- **Relative paths.** Yosys splits a `-p` script on whitespace, and this
+  project's directory name contains spaces:
+  `ERROR: File `Lite' not found or is a directory`. The same trap as Verilator's
+  build directory, in a different tool — see below.
+
+---
+
+## Icarus cannot run this checker
 
 Two independent blockers, both hard:
 
@@ -31,7 +122,7 @@ Icarus is therefore useful only as a **fast functional smoke run** against the
 RTL and `sanity_tb.sv`, with the checker and interface excluded from the file
 list. That is what `run_sim.sh icarus` does.
 
-### Verilator runs the entire checker
+## Verilator runs the entire checker
 
 Every assertion and cover property in `axi4lite_protocol_checker` compiles and
 executes, and Verilator parses `axi4lite_if.sv` in full including the clocking
@@ -78,35 +169,37 @@ on EDA Playground, not locally. That is a November milestone anyway.
 
 ## Cover-property status
 
-Measured from the two smoke benches, which are not expected to close anything.
-Recorded so the September/October coverage work starts from a real baseline
-rather than zero.
+**Every cover property is now non-zero**, and the interesting part is *where*.
 
-The checker binds to both slave modules, so each bench reports the covers of
-its own instance. Reproduce with `make coverage`.
+Measured by `make coverage`, which runs all four local benches with
+`--coverage-user` and reports per checker **instance**. Full tables, regenerated
+on every run, are in [coverage_report.md](coverage_report.md).
 
-| Cover point | `sanity_tb` (reg) | `sanity_mem_tb` (mem) | Note |
+The system benches carry three checker instances — one on the interconnect's
+master-facing port and one inside each slave — and the difference between the
+columns is the result rather than noise:
+
+| Cover point | master port | slave ports | what the split says |
 |---|---|---|---|
-| `c_aw_before_w` | 1 | 1 | qualified form — see below |
-| `c_w_before_aw` | 1 | 1 | qualified form |
-| `c_aw_w_same_cycle` | 11 | 11 | |
-| `c_misaligned_aw` | 1 | 1 | |
-| `c_misaligned_ar` | 1 | 1 | |
-| `c_partial_strobe` | 2 | 6 | the memory bench sweeps each byte lane individually |
-| `c_zero_strobe` | 1 | 1 | SLVERR on the register slave, OKAY no-op on memory |
-| `c_resp_okay` | 26 | 24 | |
-| `c_resp_slverr` | 5 | 2 | memory has only one error class; the register slave has three |
-| `c_resp_decerr` | **0** | **0** | correct — DECERR comes from the interconnect, September |
-| `c_b2b_write` | **0** | **0** | both benches leave a gap between transactions |
-| `c_b2b_read` | **0** | **0** | as above |
-| `c_write_backpressure` | **0** | **0** | `BREADY`/`RREADY` tied high in both benches |
-| `c_read_backpressure` | **0** | **0** | as above |
+| `c_resp_decerr` | **195** | **0** | Spec §4's claim, measured: the interconnect produces `DECERR` and no slave can |
+| `c_w_before_aw` | **127** | **0** | The interconnect absorbs the AW/W ordering — it forwards both halves together, so W-before-AW is a property of the master port only |
+| `c_b2b_write` | **650** | 0 | Likewise: the interconnect inserts response states, so it never issues back-to-back to a slave |
+| `c_write_backpressure` | **2793** | 0 | It raises its own BREADY the cycle a slave responds, so it never stalls one |
 
-All five zeros are expected and attributable, not unexplained holes.
+None of the right-hand zeros is a stimulus gap. Each is a structural consequence
+of what the interconnect does, and each is written down here and in
+[interconnect_architecture.md](interconnect_architecture.md) so it is never
+"closed" by adding stimulus that cannot reach it.
 
-`c_resp_slverr` at 5 versus 2 is the numeric shadow of a design difference: the
-register slave has three error classes in a priority cascade (misaligned,
-unimplemented offset, partial strobe), the memory slave has one (misaligned).
+### The five that used to be permanently zero
+
+`c_b2b_write`, `c_b2b_read`, `c_write_backpressure`, `c_read_backpressure` and
+`c_resp_decerr` read 0 in every run this project made until 6 September. Four of
+them needed a driver that keeps the *next* transaction's VALID asserted while the
+current one is still completing, which `tb/sanity_rand_tb.sv` does and no
+directed bench can. The fifth needed an interconnect to exist.
+
+Both were closed **locally, under Verilator**, without a commercial simulator.
 
 ## Defect found in the checker's ordering covers
 
@@ -180,3 +273,25 @@ Two consequences worth carrying:
 
 Local `make test` is unaffected and stays the RTL regression: Icarus and
 Verilator have no UVM support and never will for this project's purposes.
+
+**Since 6 September the seed is no longer fixed.** Playground's command line
+cannot pass `+SVSEED`, so it arrives as a define written into the generated
+bundle by `make playground PLAY=x SEED=n`, and the sequence seeds its own
+process with it. `axi_multiseed_test` runs eight seeds inside one simulation,
+because Playground cannot launch eight runs either.
+
+---
+
+## What each tool is used for, in the end
+
+| Command | Tool | What it decides |
+|---|---|---|
+| `make elab` | slang | Does the UVM source mean what it says, in any conformant tool |
+| `make lint` | Verilator | Is the RTL clean at `-Wall` |
+| `make test` | Verilator | Do the three directed benches pass, with all assertions live |
+| `make regression` | Verilator | Ten random seeds, unattended, in 12 seconds |
+| `make formal` | Yosys + z3 | The same-cycle rules no simulation here can decide |
+| `make playground` → Xcelium | Xcelium | The UVM environment: scoreboard, coverage model, RAL |
+
+The last row is the only one with a person in it, and that is a property of the
+tools rather than of the flow: no free simulator runs UVM.

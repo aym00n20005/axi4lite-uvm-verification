@@ -1,106 +1,120 @@
-# Functional Coverage — status and justifications
+# Functional coverage — status and justifications
 
-**21 August 2026.** Measured by `axi_smoke_test` on Cadence Xcelium 25.03,
-UVM 1.2. 44 transactions observed. Reproduce with `make playground PLAY=smoke`.
+**This file is written by hand.** The measured numbers are generated into
+[coverage_report.md](coverage_report.md) by `make coverage`; this one carries the
+part a generator cannot supply.
 
-Verification plan section 5 sets the closure criterion: 100% on all groups
-except `cg_wstrb` at >=90%, and **every uncovered bin must be individually
-justified in writing**. "We ran out of time" is not a justification. This file
-is that record.
+Verification plan §5 sets the closure criterion: 100% on all groups except
+`cg_wstrb` at ≥90%, and **every uncovered bin must be individually justified in
+writing**. "We ran out of time" is not a justification. This is that record.
 
 ---
 
-## Measured
+## What changed, and what it cost to change it
 
-| Group | Bins | Goal | Status |
+The August version of this file justified four open bins with a single cause:
+
+> There is no interconnect, so no address decode exists to route a transaction to
+> the memory slave or to terminate an unmapped one. **This is structural, not a
+> stimulus gap.** … Not reachable before then by any amount of stimulus.
+
+That was correct, and it is now spent. `rtl/axi4lite_interconnect.sv` exists,
+`REGION_MEM`, `REGION_UNMAPPED_LOW`, `REGION_UNMAPPED_HIGH` and `cg_response`'s
+`DECERR` bin are all reachable, and `cg_address_region` now records traffic
+**routed** rather than addresses merely **issued** — which is the distinction the
+old file spent three paragraphs refusing to gloss over.
+
+Three groups that the August file listed as *not modelled* — `cg_valid_delay`,
+`cg_backpressure`, `cg_reset` — are modelled. Its stated blocker was that they
+"need per-cycle timing the monitor does not record", and it named the fix:
+`cg_aw_w_order` had left that list when the monitor began timestamping accepts,
+and "the same treatment extends to the other three". It did.
+
+**All eleven groups in vplan §5 are now modelled, plus all four crosses.**
+
+## Cover properties — closed, locally
+
+Fourteen of fourteen are non-zero. Five of them read 0 in *every run this project
+made* before 6 September:
+
+| Cover point | Before | Now (master port) | What closed it |
 |---|---|---|---|
-| `cg_transaction_type` | 2/2 | 100% | ✅ |
-| `cg_register_offset` | 8/8 | 100% | ✅ |
-| `cg_alignment` | 4/4 | 100% | ✅ |
-| `cg_wstrb` | **16/16** | ≥90% | ✅ exceeds goal |
-| `cg_error_source` | 4/4 | 100% | ✅ |
-| `cg_aw_w_order` | 3/3 | 100% | ✅ |
-| `cg_address_region` | 2/5 | 100% | ❌ justified below |
-| `cg_response` | 2/3 | 100% | ❌ justified below |
+| `c_b2b_write` | 0 | **650** | `sanity_rand_tb` — per-channel engines that keep the next transaction's VALID asserted while the current one completes |
+| `c_b2b_read` | 0 | **633** | same |
+| `c_write_backpressure` | 0 | **2793** | same, plus holding READY low *after* VALID rises rather than before |
+| `c_read_backpressure` | 0 | **2475** | same |
+| `c_resp_decerr` | 0 | **195** | the interconnect existing at all |
 
-## Justification for every uncovered bin
+All five closed **under Verilator**, with no commercial simulator involved.
 
-Two groups, three bins, **one cause**.
+The four in the first group were never a stimulus *volume* problem. A sequential
+driver — drive AW, drive W, wait for B, repeat — cannot produce a back-to-back
+accept or three consecutive cycles of `AWVALID` with `AWREADY` low, however many
+transactions it runs. It needed a different *shape* of driver.
 
-### `cg_address_region` — all five bins hit, and that is misleading
+## Zeros that are correct, and must stay zero
 
-**Updated 23 August.** `axi_random_test` drives addresses across the whole map,
-so all five bins now report covered. **This does not mean those regions are
-verified**, and the number should not be read as if it did.
+These are the ones most at risk of being "closed" by someone adding stimulus that
+cannot reach them, so they are written down as structural.
 
-The coverage model classifies by the address the master issued, which is what
-vplan §5 asks for. But `tb_top` instantiates only the register slave, so a
-transaction to `0x1078` is not routed to memory — it aliases onto the register
-slave's `ADDR[11:0]` decode and is answered, correctly, as register traffic. The
-bin records that an address in the memory range was *issued*, not that the
-memory slave *served* it.
+| Cover point | Zero at | Why it is correct |
+|---|---|---|
+| `c_resp_decerr` | both slave ports | Spec §4: `DECERR` is produced by the interconnect and never by a slave. Neither slave defines `2'b11`. A non-zero here would be a **defect**, not coverage |
+| `c_w_before_aw`, `c_aw_before_w` | both slave ports | The interconnect forwards AW and W **together**, so a slave always accepts them in the same cycle. W-before-AW is a property of the master port, and the interconnect absorbing it is what holding the beat *means* |
+| `c_b2b_write`, `c_b2b_read` | both slave ports | The interconnect inserts response states between transactions, so it never issues back-to-back to a slave |
+| `c_write_backpressure`, `c_read_backpressure` | both slave ports | The interconnect raises its own `BREADY`/`RREADY` the cycle a slave responds, so it never stalls one |
 
-A green `cg_address_region` while the memory slave is absent from the DUT is
-exactly the failure mode BUG-007 was: a metric that cannot fail to look good.
-The honest statement is below, and it is unchanged by the random run.
+Four of those five rows are consequences of one design decision, recorded in
+[interconnect_architecture.md §4](interconnect_architecture.md).
 
-### `REGION_MEM`, `REGION_UNMAPPED_LOW`, `REGION_UNMAPPED_HIGH` — not routed
+## Functional coverage — the UVM groups
 
-`tb/tests/tb_top.sv` instantiates `axi4lite_reg_slave` and nothing else. There
-is no interconnect, so no address decode exists to route a transaction to the
-memory slave or to terminate an unmapped one. Every address the UVM environment
-issues is seen by the register slave, which decodes `ADDR[11:0]` and therefore
-classifies all of them as register-region traffic.
+Measured numbers are in [coverage_report.md](coverage_report.md), regenerated
+from an imported EDA Playground log by `make coverage`. Groups and their goals:
 
-This is **structural, not a stimulus gap**. Issuing a transaction to `0x1000`
-today would not reach the memory slave; it would alias onto `CTRL` inside the
-register slave, exactly as `0x100` aliases onto `CTRL` — routing is the
-interconnect's responsibility, and the register slave is behaving correctly.
+| Group | Goal | Modelled since |
+|---|---|---|
+| `cg_transaction_type` | 100% | 21 Aug |
+| `cg_address_region` | 100% | 21 Aug — **meaningful** since the interconnect |
+| `cg_register_offset` | 100% | 21 Aug |
+| `cg_alignment` | 100% | 21 Aug |
+| `cg_wstrb` | ≥90% | 21 Aug |
+| `cg_response` | 100% | 21 Aug — `DECERR` reachable since the interconnect |
+| `cg_error_source` | 100% | 21 Aug |
+| `cg_aw_w_order` | 100% | 21 Aug |
+| `cg_valid_delay` | 100% | **6 Sep** |
+| `cg_backpressure` | 100% | **6 Sep** |
+| `cg_reset` | 100% | **6 Sep** |
+| crosses ×4 | 100% | 21 Aug ×3, **6 Sep** ×1 (`type × backpressure`) |
 
-**Closes:** September, with `rtl/axi4lite_interconnect.sv` (vplan milestone
-30 Sep). Not reachable before then by any amount of stimulus.
+### The three new groups measure the DUT's experience, not the driver's knobs
 
-### `cg_response` — `DECERR`
+This is the same principle the collector was built on and it is worth restating,
+because the easy implementation of each of these would have violated it:
 
-Same cause, stated separately because the bin is in a different group. Spec
-section 4: `DECERR` is produced by the **interconnect** for an unmapped address
-and never by a slave. Neither slave contains a code path that can emit `2'b11`,
-by design — `axi4lite_reg_slave` and `axi4lite_mem_slave` both define only
-`RESP_OKAY` and `RESP_SLVERR`.
+- **`cg_valid_delay`** samples the idle gap a request channel showed before VALID
+  rose — **not** `aw_delay`. `aw_delay` is counted from dispatch, an instant no
+  pin shows and the DUT does not experience. The gap between transactions is what
+  a slave actually sees.
+- **`cg_backpressure`** counts cycles a response spent asserted with the master's
+  READY low, from the monitor's own observation.
+- **`cg_reset`** answers "was anything in flight when `ARESETn` fell?" from the
+  **monitor's own accept queues**. The driver is not asked.
 
-A `DECERR` in the current testbench would be a defect, not coverage.
-
-**Closes:** September, with the interconnect.
-
-## Groups not modelled yet
-
-Declared in vplan section 5, deliberately absent from `axi_coverage` rather
-than faked:
-
-| Group | Why not |
-|---|---|
-| `cg_valid_delay` | needs per-cycle VALID timing; the monitor records transactions, not cycles |
-| `cg_backpressure` | needs per-cycle READY timing, same reason |
-| `cg_reset` | needs reset events; the monitor does not watch `ARESETn` |
-
-All three require the monitor to record cycle-level timing it currently
-discards. `cg_aw_w_order` was in this category until 21 August, when the monitor
-began timestamping the AW and W accepts — the same treatment extends to the
-other three and is the obvious next step.
-
-Sampling them from the stimulus fields instead would be measuring the
-testbench's intentions rather than the DUT's experience, which is the failure
-`axi_coverage` exists to avoid.
+Sampling the stimulus fields instead would measure the testbench's intentions
+rather than the DUT's experience, which is the failure `axi_coverage` exists to
+avoid — and, in its inverted form, the failure [BUG-007](bug_reports/BUG-007.md)
+was.
 
 ## Two mechanisms, and why
 
-Every bin is counted twice: by a SystemVerilog covergroup, and by a hand tally
-in an associative array.
+Unchanged, and still true: every bin is counted twice, by a SystemVerilog
+covergroup and by a hand tally in an associative array.
 
 The covergroups are the real artifact. They are also **inert on EDA
 Playground**: Xcelium requires coverage enabled at elaboration
-(`-coverage functional`), the Playground command line is fixed and does not pass
-it, and the result is not an error but a silent `0.00%`:
+(`-coverage functional`), Playground's command line is fixed and cannot pass it,
+and the result is not an error but a silent `0.00%`:
 
 ```
 *N,COVNSM: Sampling of covergroup type "axi_coverage::cg_transaction_type"
@@ -108,12 +122,20 @@ is not enabled. As a result, get_inst_coverage() will return 0 coverage.
 ```
 
 Xcelium says so explicitly; a quieter tool would have shown zero and left the
-project believing coverage was genuinely zero. The hand tally cannot be
-disabled by a tool switch, and it reports **missing bins by name** rather than
-only a percentage — `cg_wstrb 12.50%` says how far there is to go, `missing:
-0000 0001 0010 ...` says what to write.
+project believing coverage was genuinely zero. The hand tally cannot be disabled
+by a tool switch, and it reports **missing bins by name** rather than only a
+percentage — `cg_wstrb 12.50%` says how far there is to go, `missing: 0000 0001
+0010 …` says what to write.
 
-That distinction is what closed three groups on 21 August: the first
-measurement named `INT_ENABLE`, `offset_1`, `offset_3` and fourteen strobe
-patterns, and all of them turned out to be transactions nobody had written
-rather than anything about the design.
+That distinction is what closed three groups on 21 August: the first measurement
+named `INT_ENABLE`, `offset_1`, `offset_3` and fourteen strobe patterns, and all
+of them turned out to be transactions nobody had written rather than anything
+about the design.
+
+## How long a bin has been at zero
+
+`make coverage` appends to `results/coverage_history.json` and flags any cover
+point that has been zero across consecutive runs. That table says *how long*;
+this file says *which kind* — a stimulus gap somebody should close, or a
+structural fact somebody should write down. Only a person can make that call, and
+the history is what stops it from being made twice.
