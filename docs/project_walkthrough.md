@@ -1,12 +1,16 @@
 # Project Walkthrough
 
-**A complete explanation, from zero.** Written 27 August 2026, four days before
-DVCon. If you can follow this document you can defend every line in the
-repository.
+**A complete explanation, from zero.** If you can follow this document you can
+defend every line in the repository.
 
-Nothing here is a summary of what the code *should* do. Every claim is
-something that was run and observed, and where a claim is not backed by a run
-it says so.
+Nothing here is a summary of what the code *should* do. Every claim is something
+that was run and observed, and where a claim is not backed by a run it says so.
+
+Parts 0–6 were written when the project had two slaves, an agent, a scoreboard
+and a coverage model. They are unchanged, because that is the order the thinking
+happened in and the reasoning is the point. Parts 7–10 cover what was still
+missing then: the interconnect, the generated RAL, the flow, the formal
+experiment, and the measurement of the AI layer.
 
 ---
 
@@ -20,8 +24,14 @@ protocol assertions bound to the design, a UVM testbench that generates random
 traffic, and a reference model that independently predicts what the hardware
 should do and compares.
 
-The testbench has found nine bugs. Six were planted on purpose to prove the
-testbench works. **Three were real, and all three were in the testbench itself.**
+The testbench has found ten bugs. Six were planted on purpose to prove the
+testbench works, and each was caught by the mechanism the specification assigned
+it before any of those mechanisms existed. **Four were real, and all four were in
+the testbench itself.**
+
+There is also one defect that no test in this project can find, and a bounded
+model check finds it in under a second. That is Part 8, and it is the most
+useful thing here.
 
 ---
 
@@ -618,7 +628,7 @@ It also left a trap for later: SVA failures do **not** appear under
 score that run as a pass. Only the exit code disagrees. Written down before the
 regression runner exists.
 
-## 6.3 The real ones — all three in the testbench
+## 6.3 The real ones — all four in the testbench
 
 ### BUG-007 — a cover point that could not fail
 
@@ -717,45 +727,247 @@ test suite passing on luck.
 
 ---
 
-# Part 7 — What is actually proven
+# Part 7 — Everything that was still missing, and how it got built
 
-## 7.1 Verified by a run
+Parts 0–6 describe the project as it stood with two slaves, an agent, a
+scoreboard and a coverage model. Three things were unbuilt, and each blocked a
+named list of others.
 
-| | |
+## 7.1 The interconnect
+
+**Blocked:** `DECERR`, three `cg_address_region` bins, F17, F18, BUG-005, and any
+test that touches both slaves at once.
+
+The interesting part is not the mux. It is the address map:
+
+```
+0x0000_0000 .. 0x0000_0FFF   registers
+0x0000_1000 .. 0x0000_13FF   memory
+0x0000_1400 and above        unmapped -> DECERR
+```
+
+`ADDR[12]` alone routes `0x1400` to memory. So does `ADDR[13]`. Both are the
+obvious implementation and both are wrong — and the gap exists in the
+specification *precisely so that they are*. §7 says so, and §9 makes "decodes on
+`ADDR[13]` alone" an injection.
+
+The genuinely hard part is §7's other sentence: **W can arrive before AW, and
+then the destination is unknown.** A slave can accept a W beat early because it
+has only one place to put it. An interconnect cannot — until AW arrives it does
+not know which slave the beat belongs to, and forwarding it to a guess is
+unrecoverable. So the beat is *held*, in a buffer that is provably one entry deep
+because §1 caps outstanding writes at one.
+
+It worked on the first run: 36 of 36 checks, and no assertion fired from any of
+the three bound checker instances.
+
+**What it changed about the coverage story.** Until it existed, every address the
+master issued was answered by the one slave in the design, so `cg_address_region`
+recorded the address *issued* rather than the traffic *routed*. The old
+`coverage_status.md` spent three paragraphs refusing to report that as a green
+metric. Those paragraphs are now spent, which is the right way for a
+justification to end.
+
+## 7.2 The RAL, generated rather than written
+
+**Blocked:** F10–F13 and BUG-004.
+
+`scripts/regmap.yaml` is the register map, once. It generates three things: the
+RTL's parameter package, the UVM RAL model, and `register_map.md`. A fourth
+script checks it against §5 of the specification, which remains the source of
+truth.
+
+The point is not saved typing. It is that `uvm_reg_bit_bash_seq` — library code
+that has never read this project's spec — checks the DUT against a policy stated
+in one place. When `INT_STATUS` was injected as a plain RW register, `bit_bash`
+caught it **with nobody having written a test for it**.
+
+What is deliberately *not* generated: the register slave's behaviour. W1C
+set-beats-clear, `CTRL[1]`'s self-clearing pulse, `STATUS.error`'s transparency
+rule and `COUNTER`'s priority are one spec paragraph each, and an `always_ff`
+that cites the paragraph is a better expression of them than any template.
+
+Also not generated: **the scoreboard**. A reference model sharing constants with
+the design agrees with the design by construction — which is what BUG-007 was.
+
+## 7.3 The flow
+
+**Blocked:** everything, once there is more than one test.
+
+Six tools, and the one that mattered most was not in the plan.
+
+### The round trip was the real constraint
+
+UVM cannot be simulated locally. Icarus and Verilator have no UVM support, so the
+only simulator that runs this environment is Xcelium on EDA Playground — reached
+by clearing two panes and pasting into a browser. Writing thirteen tests, a RAL
+and an interconnect against that loop meant dozens of manual cycles, most of them
+spent on typos.
+
+**slang** fixed it. It cannot simulate; it *elaborates*, and elaboration is where
+typos live. It checks the generated bundle byte for byte — the same file that
+gets pasted — in about a fifth of a second.
+
+Pointed at the existing, working sources it immediately rejected two constraints:
+
+```
+error: invalid operands to binary expression ('bit' and 'void')
+    soft (kind == AXI_WRITE) -> strb dist {
+```
+
+`soft (a) -> b dist {...}` selects the wrong production of IEEE 1800-2017's
+constraint grammar. Xcelium accepts it. Every number this project had published
+came through it. That is [BUG-010](bug_reports/BUG-010.md), and the lesson
+generalises past the bug: **a testbench validated by exactly one simulator has
+been validated against that simulator's extensions as much as against the
+language.**
+
+### Three pastes instead of twenty-four
+
+Everything else about the flow follows from minimising the manual step:
+
+- the thirteen directed scenarios are **sequences** with thin test wrappers, so
+  all fifteen run inside one simulation;
+- the seed arrives as a **define**, because Playground's command line is fixed
+  and cannot pass `+SVSEED`;
+- eight random seeds run inside a single job, because Playground cannot launch
+  eight jobs either.
+
+### The toolkit found three defects in the flow it automates
+
+Which is the argument for building it. The regression runner's first real use
+reported five of ten seeds `INCOMPLETE` — ten parallel runs of one top were
+building into the same directory, each starting with `rm -rf`. Splitting build
+from run fixed it and took the regression from 90 seconds to 11.
+
+---
+
+# Part 8 — The formal experiment, and the result that justifies it
+
+Specification §5 states a rule:
+
+> **Set-vs-clear collision:** if an event sets `INT_STATUS` bit *n* on the same
+> cycle a write would clear it, **set wins**. The event is real and must not be
+> lost.
+
+It is a **same-cycle** rule. A transaction-level sequence sees transactions, not
+clock edges, and cannot place an event and a W1C write on one edge on purpose.
+`axi_int_status_seq` says exactly that in the file, proves the reachable half, and
+declines to claim the rest.
+
+So the priority was inverted in the RTL — an interrupt-losing defect — and both
+flows were run against it:
+
+| | Verdict on a design that loses interrupts |
 |---|---|
-| Non-UVM benches | 31/31 and 27/27 under two simulators, lint clean |
-| Constraint distributions | 500 items, every plan-critical bin reachable |
-| Directed UVM test | 44/44 checks, 0 scoreboard mismatches |
-| Random UVM test | 166 transactions, 0 mismatches |
-| Memory UVM test | 17/17, 0 mismatches |
-| Monitor independence | three counts, three paths, exact agreement |
-| Functional coverage | 6 of 8 groups at 100% on the directed test |
-| Spec revisions | all four traced to a test that fails under the old wording |
-| Bug injections | 4 of 6, each caught by its assigned mechanism |
+| Simulation: 3 directed benches, 5 random seeds, **4,576 checks**, 23 bound assertions | **all passed** |
+| Bounded model check, 16 properties, depth 25 | **failed in under a second**, naming `f_set_beats_clear_0` |
 
-## 7.2 Not true, and why
+**That is the strongest single result in this repository, and it is a negative
+one.** Not "formal is rigorous" in the abstract: one rule in this specification,
+which this testbench cannot reach by construction, decided immediately.
 
-- **No interconnect.** Each test has one slave. Nothing routes, so `DECERR` is
-  unreachable and the memory-region coverage bin is hit *by address issued*, not
-  by traffic actually routed to memory. That distinction is recorded rather than
-  enjoyed.
-- **No RAL.** BUG-004 is blocked on it.
-- **Three coverage groups unmodelled** — `cg_valid_delay`, `cg_backpressure`,
-  `cg_reset` all need per-cycle timing the monitor discards. Listed as absent
-  rather than faked, because sampling them from the stimulus would measure the
-  testbench's intentions instead of the hardware's experience.
-- **Coverage is per-test and not merged.** The directed test closes a different
-  set from the random one. Merging is a regression-runner job.
-- **Tool coverage is inert on the free simulator.** Covergroups report 0.00%
-  because coverage collection is not enabled at elaboration and cannot be — the
-  command line is fixed. Every bin is therefore *also* counted by hand, which no
-  tool switch can disable.
+The reason simulation cannot reach it is structural rather than a stimulus gap.
+The scoreboard compares before-and-after values across a whole transaction, and
+the collision happens inside one. More seeds do not help. A directed test does
+not help. The check has to be about a clock edge, and only one of the two flows
+works in those units.
 
-## 7.3 The four sentences worth having ready
+## 8.1 The half people skip
 
-1. *"I found two contradictions in my own frozen specification while deriving
-   the architecture on paper, fixed the document first, and every revision now
-   has a test that fails under the old wording."*
+An assertion that is never reached passes trivially, and a set of them will all
+pass on a design that does nothing. So every run also proves the interesting
+states are **reachable**:
+
+```
+Reached cover statement in step 3: fc_collision
+```
+
+`fc_collision` is the same-cycle event-and-clear itself. Without it,
+`f_set_beats_clear_*` could be passing because nothing can ever produce the
+collision — and the whole file would be decoration.
+
+## 8.2 What the tool could not do, which is also a finding
+
+Yosys's open-source frontend supports **no concurrent SVA at all**. `default
+clocking`, `|=>`, `property … endproperty`, in-module `import`, hierarchical
+references and `bind` were each tried and each rejected, with the exact error
+recorded in [formal_notes.md](formal_notes.md).
+
+That is the same kind of finding as *"Riviera compiles UVM and cannot simulate
+it"* — a measured tool limit that changed the design of the work, written down so
+the next person does not spend the afternoon rediscovering it.
+
+---
+
+# Part 9 — The AI layer, measured
+
+The automation plan set the terms before anything was built:
+
+> *Every student will say "I used AI." … Claiming without measuring is how you
+> lose the conversation. Unmeasured, it's the weakest thing in your repo.
+> Measured, it's among the strongest.*
+
+Fed a failure signature and a log excerpt — and nothing else — a model named the
+actual root cause of **4 of the 6** injected bugs, got the right component with
+the wrong mechanism on the other 2, and was never wrong in a way that would have
+sent someone to the wrong file.
+
+## 9.1 Two measurements before that one were invalid
+
+Both are published, because a number produced by a broken harness is worse than
+no number: it looks like rigour.
+
+**The model could read the repository.** The first run scored 5/6 — and its
+BUG-005 answer cited `rtl/axi4lite_interconnect.sv:152`. That is not triage, it
+is looking up the answer, and the score measured file access rather than
+inference. The backend is now sealed: an empty working directory, every file and
+execution tool disallowed.
+
+**The scorer graded the whole answer.** Sealed, it still said 5/6 where a hand
+review said 4/6. The disagreement was BUG-005: its *root cause* was wrong, and it
+scored `correct` because the phrase "bit-sliced compare" appeared in its *next
+step*. A next step is a suggestion; a root cause is a claim, and only the claim is
+what the tool is measured on.
+
+Mechanical and hand review now agree at 4/6.
+
+---
+
+# Part 10 — What is actually proven
+
+## 10.1 Verified by a run
+
+- Two slaves and an interconnect, against a reference model derived from the
+  specification and fed by a monitor that reconstructs from pins.
+- 23 SVA assertions on three ports — the interconnect checked as a slave from the
+  master's side and as a master from each slave's side.
+- 29 of 29 features traced to a test, generated from the specification's own
+  feature list so an unclaimed feature would appear as `UNCOVERED`.
+- 14 of 14 cover properties non-zero, five of which had never left zero.
+- 16 formal properties, with a cover pass proving none is vacuous.
+- Six injected defects, each caught by the mechanism §9 assigned it in advance.
+
+## 10.2 The limits, stated
+
+- **Two features are reachable only in UVM**: `STATUS.busy`, which needs a read
+  concurrent with an in-flight write, and `COUNTER` overflow, which needs 65,536
+  cycles. Both run on Xcelium, by hand.
+- **Some cover points are zero and must stay zero.** `DECERR` at a slave port
+  would be a defect, not coverage. Which zeros are structural is written out
+  rather than left to be "closed" later by stimulus that cannot reach them.
+- **The formal proof is bounded**, at 25 and 40 cycles, over one slave's internal
+  state. Not an unbounded proof, not the interconnect, no liveness.
+- **Tool coverage is inert on the free simulator.** Covergroups report `0.00%`
+  because collection cannot be enabled from a fixed command line, so every bin is
+  *also* counted by hand — which no tool switch can disable, and which reports
+  missing bins by name rather than only a percentage.
+
+## 10.3 The six sentences worth having ready
+
+1. *"I found two contradictions in my own frozen specification while deriving the
+   architecture on paper, fixed the document first, and every revision now has a
+   test that fails under the old wording."*
 
 2. *"My cover point was passing for the wrong reason — it could not fail to be
    covered. Qualifying it dropped the hit count from ten to one on identical
@@ -765,7 +977,17 @@ test suite passing on luck.
    experiment mattered most: with the stimulus removed, a correct, bound
    assertion sat silently on a broken design and 31 of 31 checks passed."*
 
-4. *"I injected a protocol violation into my driver. Every functional check
-   passed and UVM reported zero errors. Only the assertion saw it."*
+4. *"I injected a protocol violation into my driver. Every functional check passed
+   and UVM reported zero errors. Only the assertion saw it."*
 
-Each of those is a measurement, not a claim.
+5. *"My testbench had only ever been read by one simulator, so it had been
+   validated against that simulator's extensions as much as against the language.
+   A second, conformant front end found two malformed constraints in 0.2 seconds
+   — in code that had been producing published numbers for three weeks."*
+
+6. *"There is a rule in my specification that no test I can write is able to
+   decide, and I can show you why: 4,576 simulation checks pass on a design that
+   violates it, and a bounded model check finds it in under a second."*
+
+Each of those is a measurement, not a claim. Four of them are about something
+being wrong.
