@@ -4,28 +4,28 @@
 <style>
   @page { size: A4; margin: 13mm 14mm; }
   * { box-sizing: border-box; }
-  body { font: 9.8pt/1.45 "Helvetica Neue", Helvetica, Arial, sans-serif;
+  body { font: 9.2pt/1.40 "Helvetica Neue", Helvetica, Arial, sans-serif;
          color: #111; margin: 0; }
   h1 { font-size: 16pt; margin: 0 0 1mm; letter-spacing: -0.2pt; }
   .sub { font-size: 9pt; color: #444; margin: 0 0 1mm; }
   .meta { font-size: 8.2pt; color: #666; margin: 0 0 3mm;
           border-bottom: 1.2pt solid #111; padding-bottom: 2mm; }
-  h2 { font-size: 9.6pt; text-transform: uppercase; letter-spacing: 0.6pt;
-       margin: 3.4mm 0 1.4mm; color: #000; }
+  h2 { font-size: 9.2pt; text-transform: uppercase; letter-spacing: 0.6pt;
+       margin: 2.8mm 0 1.2mm; color: #000; }
   p { margin: 0 0 1.6mm; }
   ul { margin: 0 0 1.6mm; padding-left: 4.2mm; }
   li { margin-bottom: 0.9mm; }
   .lead { font-size: 10pt; }
   .cols { display: flex; gap: 6mm; }
   .cols > div { flex: 1; }
-  table { width: 100%; border-collapse: collapse; font-size: 8.8pt; }
+  table { width: 100%; border-collapse: collapse; font-size: 8.4pt; }
   td { padding: 0.7mm 0; vertical-align: top; }
   td.k { color: #555; padding-right: 3mm; white-space: nowrap; }
   .find { border-left: 2pt solid #111; padding: 0 0 0 3mm; margin: 0 0 2.4mm; }
-  .find > b:first-child { display: block; font-size: 9.2pt; margin-bottom: 0.4mm; }
+  .find > b:first-child { display: block; font-size: 8.9pt; margin-bottom: 0.4mm; }
   .find span { color: #333; }
   code { font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 8.4pt; }
-  .scope { background: #f4f4f4; padding: 2.2mm 3mm; font-size: 8.6pt; color: #333; }
+  .scope { background: #f4f4f4; padding: 2mm 3mm; font-size: 8.2pt; color: #333; }
   footer { margin-top: 3.6mm; padding-top: 2mm; border-top: 0.7pt solid #bbb;
            font-size: 8.4pt; color: #555; display: flex; justify-content: space-between; }
 </style>
@@ -36,41 +36,57 @@
   github.com/aym00n20005/axi4lite-uvm-verification</p>
 
 <p class="lead"><b>The design is deliberately small so the effort goes into the
-methodology.</b> Two AXI4-Lite slaves &mdash; a register file with mixed
-RW/RO/W1C policies and a byte-addressable memory. Everything interesting is in
-the machinery built to check them.</p>
+methodology.</b> An address-decoding interconnect, a register file with mixed
+RW/RO/W1C/WC policies, and a byte-addressable memory. Everything interesting is
+in the machinery built to check them.</p>
 
 <div class="cols">
 <div>
   <h2>Built</h2>
   <ul>
-    <li>Specification written and frozen <b>before</b> any RTL; corrected before it, never after</li>
-    <li><b>23 SVA assertions + 14 cover properties</b>, bound to the DUT so no assertion code sits in <code>rtl/</code></li>
-    <li>UVM agent with <b>five independent per-channel threads</b>, not a sequential FSM &mdash; AW and W are separate channels and a lockstep driver can never produce W-before-AW</li>
-    <li>Passive monitor rebuilding transactions <b>from pins only</b>, with no route to the driver</li>
-    <li>Scoreboard whose reference model is derived from the <b>specification</b>, not the RTL</li>
-    <li>Coverage collector sampled from observation, reporting <b>missing bins by name</b></li>
+    <li>Specification frozen <b>before</b> any RTL; corrected before it, never after</li>
+    <li><b>23 SVA assertions + 14 cover properties</b>, bound to <b>three ports</b> &mdash; the interconnect checked as a slave from the master and as a master from each slave</li>
+    <li>UVM agent with <b>five independent per-channel threads</b>, not a sequential FSM &mdash; a lockstep driver can never produce W-before-AW</li>
+    <li>Passive monitor rebuilding transactions <b>from pins only</b>; scoreboard derived from the <b>specification</b>, and deliberately <b>not</b> generated from the same source as the design</li>
+    <li>UVM RAL <b>generated</b> from one YAML alongside the RTL's register map and the docs, its mirror fed by the monitor rather than the stimulus</li>
+    <li>A flow: regression runner, log parser with normalised <b>failure signatures</b>, triage, coverage trending, traceability matrix</li>
   </ul>
 </div>
 <div>
   <h2>Measured</h2>
   <table>
-    <tr><td class="k">Directed UVM</td><td>61 checks, 0 scoreboard mismatches</td></tr>
-    <tr><td class="k">Random UVM</td><td>166 transactions, 0 mismatches</td></tr>
-    <tr><td class="k">Non-UVM smoke</td><td>58 checks, two simulators, lint clean</td></tr>
-    <tr><td class="k">Coverage</td><td>6 of 8 groups at 100%; every open bin justified in writing</td></tr>
-    <tr><td class="k">Spec revisions</td><td>4, each traced to a test that fails under the old wording</td></tr>
-    <tr><td class="k">Bug injections</td><td>4 of 6 detected, each by the mechanism the plan assigns it</td></tr>
-    <tr><td class="k">Genuine bugs</td><td>3 found &mdash; all three in the testbench</td></tr>
+    <tr><td class="k">Local regression</td><td>16 runs, <b>9,044 checks</b>, parallel, 12 seconds</td></tr>
+    <tr><td class="k">Cover properties</td><td><b>14 of 14</b> non-zero &mdash; five had never left zero</td></tr>
+    <tr><td class="k">Functional coverage</td><td>11 groups + 4 crosses, all modelled, sampled from observation</td></tr>
+    <tr><td class="k">Traceability</td><td><b>29 features</b> &rarr; test &rarr; result, generated from the spec's own list</td></tr>
+    <tr><td class="k">Formal</td><td>16 properties, depth 25 and 40, with a cover pass proving none is vacuous</td></tr>
+    <tr><td class="k">Bugs</td><td><b>6 of 6</b> injections caught by their assigned mechanism &middot; <b>4</b> genuine, all in the testbench</td></tr>
+    <tr><td class="k">LLM triage</td><td><b>4/6 correct, 2/6 partial, 0/6 wrong</b> &mdash; sealed from the source</td></tr>
   </table>
   <h2>Tools</h2>
-  <p>Cadence Xcelium (UVM) &middot; Verilator + Icarus (local RTL &amp; SVA) &middot;
-     Make &middot; Git. Aldec Riviera compiles UVM but cannot simulate it on the
-     free tier &mdash; measured, not assumed.</p>
+  <p>Cadence Xcelium (UVM) &middot; <b>slang</b> (local elaboration of the whole
+     UVM environment, 0.2&nbsp;s) &middot; Verilator (RTL &amp; SVA) &middot;
+     <b>Yosys + Z3</b> (bounded model check) &middot; Make + Python &middot; Git.
+     Six tools, no two of which do the same job &mdash; measured, not assumed.</p>
 </div>
 </div>
 
 <h2>What the testbench found</h2>
+
+<div class="find"><b>A rule that 4,576 simulation checks cannot decide.</b>
+<span>The spec requires that a hardware event colliding with a write-1-to-clear on
+the same cycle wins. I inverted that priority in the RTL. Three directed benches,
+five random seeds, <b>4,576 checks</b> and 23 bound assertions <b>all passed</b>;
+the bounded model check failed in under a second, naming the property. The
+collision happens inside one transaction and the scoreboard compares across whole
+transactions &mdash; no number of seeds reaches it.</span></div>
+
+<div class="find"><b>Two constraints that meant something other than what they said.</b>
+<span><code>soft (a) -&gt; b dist {...}</code> selects the wrong production of the
+IEEE&nbsp;1800-2017 constraint grammar. Xcelium accepts it, and every number this
+project had published came through it. Found in <b>0.2 seconds</b> by pointing a
+second, conformant front end at the existing sources. A testbench validated by one
+simulator is validated against that simulator's extensions.</span></div>
 
 <div class="find"><b>A cover point that could not fail to be covered.</b>
 <span>The property meant to prove the driver's threads run independently was
@@ -78,32 +94,15 @@ satisfied by <i>any</i> multi-transaction run. It could never stay uncovered, so
 it could never warn. Qualifying it dropped the hit count from <b>10 to 1</b> on
 identical stimulus.</span></div>
 
-<div class="find"><b>A correct, bound assertion sitting silently on a broken design.</b>
-<span>I injected a real protocol defect and ran it three ways. Bound assertion:
-caught at the moment of violation. No assertion: caught twelve checks later as
-data corruption. Bound assertion with one stimulus case removed:
-<b>31 of 31 checks passed</b>. A checker constrains nothing if the stimulus never
-reaches the corner.</span></div>
-
-<div class="find"><b>A protocol violation that every functional check passed.</b>
-<span>Injected into my own driver: the bus was driven illegally on every write,
-all checks passed, and <code>UVM_ERROR: 0</code>. Only the assertion saw it.
-Functional correctness and protocol compliance are independent properties &mdash;
-demonstrated, not claimed.</span></div>
-
-<div class="find"><b>Two contradictions in my own frozen specification.</b>
-<span>Found while deriving the architecture on paper. One decode clause made a
-required error response unreachable; one status bit was defined so that reading
-it destroyed it. Both fixed in the document first, then the RTL.</span></div>
-
-<p class="scope"><b>Honest scope.</b> In progress, and the plan runs to December.
-No interconnect yet, so <code>DECERR</code> and routed memory traffic are
-unreachable and recorded as such. No RAL model yet. Three coverage groups are
-listed as unmodelled rather than faked, because they need per-cycle timing the
-monitor does not record. Coverage is per-test and unmerged. Every number above
+<p class="scope"><b>Honest scope.</b> Two features are reachable only under UVM,
+which runs on one commercial simulator reached through a browser. Some cover points
+are zero at the slave ports and <b>must stay zero</b> &mdash; <code>DECERR</code>
+there would be a defect, not coverage. The formal proof is bounded. Code coverage
+was not done, for a measured reason: the only simulator that can produce it is
+reached through a fixed command line that cannot enable it. Every number above
 came from a run; nothing is projected.</p>
 
 <footer>
-  <span>Verification plan, DUT spec, 9 bug reports and a full walkthrough in <code>docs/</code></span>
-  <span>28 August 2026</span>
+  <span>Verification plan, DUT spec, 10 bug reports, formal notes and a full walkthrough in <code>docs/</code></span>
+  <span>make all</span>
 </footer>

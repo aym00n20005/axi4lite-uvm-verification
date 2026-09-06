@@ -45,7 +45,7 @@ LINT_ic  := rtl/axi4lite_interconnect.sv
 
 .PHONY: test coverage cover-quick lint clean help playground setup elab \
         regmap regcheck regression triage vplan test-scripts import-log \
-        formal all docs
+        formal onepager all docs
 
 #---------------------------------------------------------------------
 # One-time toolchain. Idempotent: brew and fetch_uvm.sh both no-op when
@@ -131,9 +131,15 @@ all: regcheck elab lint test-scripts regression triage coverage vplan formal
 	@echo ""
 	@echo "  all: done. docs/traceability.md is the one to read."
 
+# The printable brief. Committed, unlike every other generated file --
+# it is the one document that gets read away from the repository, where
+# nobody can check its figures against a run.
+onepager:
+	@./scripts/make_onepager.sh
+
 # Regenerate every generated document from what has been measured.
-docs: regmap coverage vplan
-	@echo "docs: register_map.md, coverage_report.md, traceability.md"
+docs: regmap coverage vplan onepager
+	@echo "docs: register_map.md, coverage_report.md, traceability.md, one_pager.pdf"
 
 # One slave at a time: linting both together trips MULTITOP, since each
 # is a legitimate top in its own right.
