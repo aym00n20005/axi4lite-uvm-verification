@@ -60,7 +60,9 @@ if ! command -v slang >/dev/null 2>&1; then
     exit 2
 fi
 
-ALL_BUNDLES=(hello rand_smoke smoke random mem)
+# The three system bundles first -- they are the ones that get pasted,
+# and a failure in one of them is the one worth seeing at the top.
+ALL_BUNDLES=(sys ral rand hello rand_smoke smoke random mem)
 if [[ $# -gt 0 ]]; then BUNDLES=("$@"); else BUNDLES=("${ALL_BUNDLES[@]}"); fi
 
 FAILED=0

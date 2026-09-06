@@ -70,6 +70,13 @@ class axi_driver extends uvm_driver #(axi_transaction);
     int unsigned aborted_reads  = 0;
     int unsigned n_resets       = 0;
 
+    // What the driver was ASKED to drive. A third count, independent of
+    // both the sequence's and the monitor's -- and the only one that
+    // covers RAL traffic, which originates inside uvm_reg rather than in
+    // a sequence's write()/read().
+    int unsigned dispatched_writes = 0;
+    int unsigned dispatched_reads  = 0;
+
     //==================================================================
     task run_phase(uvm_phase phase);
         drive_idle();
@@ -196,14 +203,40 @@ class axi_driver extends uvm_driver #(axi_transaction);
         t.completed = 1'b0;
         if (t.kind == AXI_WRITE) begin
             write_slot.get(1);
+            dispatched_writes++;
             aw_q.put(t);
             w_q.put(t);
             b_q.put(t);
         end else begin
             read_slot.get(1);
+            dispatched_reads++;
             ar_q.put(t);
             r_q.put(t);
         end
+
+        //--------------------------------------------------------------
+        // The one exception to "item_done fires on acceptance".
+        //
+        // uvm_reg_map::do_bus_write reads the response straight out of
+        // the request item as soon as finish_item returns, because the
+        // adapter declares provides_responses = 0. finish_item returns
+        // when the driver calls item_done -- which this driver does at
+        // ACCEPTANCE, deliberately, so a read can overlap a write and
+        // F24 is observable at all.
+        //
+        // For ordinary traffic that is exactly right: the sequence owns
+        // the handle and waits on t.completed itself. For a RAL access
+        // it is wrong in a way that would not announce itself -- the RAL
+        // would read resp before the B channel had written it, report
+        // UVM_IS_OK for every access including the failing ones, and a
+        // bit_bash run against a broken access policy would pass.
+        //
+        // So a RAL item, and only a RAL item, holds item_done until the
+        // bus has actually answered. The cost is that RAL accesses do
+        // not overlap, which they must not anyway: a mirror updated from
+        // a read that overtook its own write is not a mirror.
+        //--------------------------------------------------------------
+        if (t.from_ral) wait (t.completed == 1'b1);
     endtask
 
     //==================================================================

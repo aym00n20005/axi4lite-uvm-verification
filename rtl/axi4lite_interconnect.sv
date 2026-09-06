@@ -164,18 +164,15 @@ module axi4lite_interconnect #(
     end
 
     //==================================================================
-    // WRITE PATH
+    // State.
     //
-    //   W_COLLECT : accept AW and W from the master, in either order and
-    //               independently.  This is where a W that arrives first
-    //               is held.
-    //   W_FWD     : both halves in hand and the destination known; drive
-    //               them at the selected slave until each is accepted.
-    //   W_WAIT_B  : slave response outstanding.
-    //   W_RESP    : drive S_BVALID until the master accepts.  Also the
-    //               state a DECERR jumps straight to.
+    // Both state machines' variables are declared together and ahead of
+    // everything that reads them. The two paths are independent -- spec
+    // section 1 allows one write and one read in flight at once -- and
+    // nothing here is shared between them.
     //==================================================================
     typedef enum logic [1:0] { W_COLLECT, W_FWD, W_WAIT_B, W_RESP } wstate_e;
+    typedef enum logic [1:0] { R_IDLE,    R_FWD, R_WAIT_R, R_RESP } rstate_e;
 
     wstate_e                  wstate;
     logic                     aw_held, w_held;
@@ -187,6 +184,53 @@ module axi4lite_interconnect #(
     logic [1:0]               bresp_q;
     logic                     aw_sent, w_sent;
 
+    rstate_e                  rstate;
+    logic [ADDR_WIDTH-1:0]    ar_addr_q;
+    logic [2:0]               ar_prot_q;
+    dest_e                    r_dest_q;
+    logic [DATA_WIDTH-1:0]    rdata_q;
+    logic [1:0]               rresp_q;
+
+    //==================================================================
+    // Selected-slave response collapse.  Only one port is ever active per
+    // path, so this is a select rather than an arbitration.
+    //
+    // Declared HERE, above the state machines that read them, rather than
+    // beside the fan-out that produces them. Verilog permits a net to be
+    // referenced before its declaration and Verilator accepts it; a
+    // conformant front end does not, and `make elab` said so. Declaring
+    // before use is also simply easier to read.
+    //
+    // sel_*_w / sel_*_r come from the destination LATCHES, so they are
+    // stable for the whole of a forwarded transaction.
+    //==================================================================
+    wire sel_reg_w = (w_dest_q == DEST_REG);
+    wire sel_mem_w = (w_dest_q == DEST_MEM);
+    wire sel_reg_r = (r_dest_q == DEST_REG);
+    wire sel_mem_r = (r_dest_q == DEST_MEM);
+
+    wire                  m_aw_hs = (M0_AWVALID && M0_AWREADY) || (M1_AWVALID && M1_AWREADY);
+    wire                  m_w_hs  = (M0_WVALID  && M0_WREADY)  || (M1_WVALID  && M1_WREADY);
+    wire                  m_b_hs  = (M0_BVALID  && M0_BREADY)  || (M1_BVALID  && M1_BREADY);
+    wire                  m_ar_hs = (M0_ARVALID && M0_ARREADY) || (M1_ARVALID && M1_ARREADY);
+    wire                  m_r_hs  = (M0_RVALID  && M0_RREADY)  || (M1_RVALID  && M1_RREADY);
+
+    wire [1:0]            m_bresp = sel_mem_w ? M1_BRESP : M0_BRESP;
+    wire [DATA_WIDTH-1:0] m_rdata = sel_mem_r ? M1_RDATA : M0_RDATA;
+    wire [1:0]            m_rresp = sel_mem_r ? M1_RRESP : M0_RRESP;
+
+    //==================================================================
+    // WRITE PATH
+    //
+    //   W_COLLECT : accept AW and W from the master, in either order and
+    //               independently.  This is where a W that arrives first
+    //               is held.
+    //   W_FWD     : both halves in hand and the destination known; drive
+    //               them at the selected slave until each is accepted.
+    //   W_WAIT_B  : slave response outstanding.
+    //   W_RESP    : drive S_BVALID until the master accepts.  Also the
+    //               state a DECERR jumps straight to.
+    //==================================================================
     // Accepting is gated on W_COLLECT alone, which is what gives
     // single-outstanding (spec section 1) for free: leaving the state
     // drops both READYs, and returning to it on the master's B handshake
@@ -280,15 +324,6 @@ module axi4lite_interconnect #(
     // READ PATH -- the same shape, minus the two-halves problem.  AR
     // carries the address, so the destination is known at the accept.
     //==================================================================
-    typedef enum logic [1:0] { R_IDLE, R_FWD, R_WAIT_R, R_RESP } rstate_e;
-
-    rstate_e               rstate;
-    logic [ADDR_WIDTH-1:0] ar_addr_q;
-    logic [2:0]            ar_prot_q;
-    dest_e                 r_dest_q;
-    logic [DATA_WIDTH-1:0] rdata_q;
-    logic [1:0]            rresp_q;
-
     assign S_ARREADY = (rstate == R_IDLE);
     wire s_ar_hs = S_ARVALID && S_ARREADY;
 
@@ -346,11 +381,6 @@ module axi4lite_interconnect #(
     // and a_wdata_stable on the slave-port checker instances hold by
     // construction rather than by luck.  Only the VALIDs are steered.
     //==================================================================
-    wire sel_reg_w = (w_dest_q == DEST_REG);
-    wire sel_mem_w = (w_dest_q == DEST_MEM);
-    wire sel_reg_r = (r_dest_q == DEST_REG);
-    wire sel_mem_r = (r_dest_q == DEST_MEM);
-
     assign M0_AWADDR  = aw_addr_q;
     assign M0_AWPROT  = aw_prot_q;
     assign M0_WDATA   = w_data_q;
@@ -376,18 +406,6 @@ module axi4lite_interconnect #(
     assign M1_BREADY  = (wstate == W_WAIT_B) && sel_mem_w;
     assign M1_ARVALID = (rstate == R_FWD)  && sel_mem_r;
     assign M1_RREADY  = (rstate == R_WAIT_R) && sel_mem_r;
-
-    // Selected-slave response collapse.  Only one port is ever active
-    // per path, so this is a select rather than an arbitration.
-    wire                  m_aw_hs = (M0_AWVALID && M0_AWREADY) || (M1_AWVALID && M1_AWREADY);
-    wire                  m_w_hs  = (M0_WVALID  && M0_WREADY)  || (M1_WVALID  && M1_WREADY);
-    wire                  m_b_hs  = (M0_BVALID  && M0_BREADY)  || (M1_BVALID  && M1_BREADY);
-    wire                  m_ar_hs = (M0_ARVALID && M0_ARREADY) || (M1_ARVALID && M1_ARREADY);
-    wire                  m_r_hs  = (M0_RVALID  && M0_RREADY)  || (M1_RVALID  && M1_RREADY);
-
-    wire [1:0]            m_bresp = sel_mem_w ? M1_BRESP : M0_BRESP;
-    wire [DATA_WIDTH-1:0] m_rdata = sel_mem_r ? M1_RDATA : M0_RDATA;
-    wire [1:0]            m_rresp = sel_mem_r ? M1_RRESP : M0_RRESP;
 
     //==================================================================
     // Deliberately unused: the slaves' VALID signals are consumed only

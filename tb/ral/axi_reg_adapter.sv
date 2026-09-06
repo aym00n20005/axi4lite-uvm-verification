@@ -68,6 +68,13 @@ class axi_reg_adapter extends uvm_reg_adapter;
         t.data = rw.data;
         t.strb = 4'b1111;                    // see the header
 
+        // Tells the driver to hold item_done until the bus has answered.
+        // provides_responses is 0, so uvm_reg_map reads the status
+        // straight out of this item the moment finish_item returns --
+        // and this driver's item_done fires on acceptance. See
+        // axi_driver::dispatch for the full reasoning.
+        t.from_ral = 1'b1;
+
         // Timing knobs the RAL has no opinion about. Randomising them
         // rather than pinning them to zero keeps RAL traffic from being
         // the one part of the regression that never exercises a delay --

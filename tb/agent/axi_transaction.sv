@@ -97,6 +97,11 @@ class axi_transaction extends uvm_sequence_item;
     // check stays exact across a reset test.
     bit        aborted;
 
+    // Set by axi_reg_adapter::reg2bus. The driver treats a RAL item
+    // differently in exactly one respect -- see axi_driver::dispatch --
+    // and nothing else in the environment looks at it.
+    bit        from_ral;
+
     // Filled in by the MONITOR from observed accept timing, not from the
     // stimulus fields above. get_order() below reports what was asked
     // for; this reports what actually happened on the bus. Coverage

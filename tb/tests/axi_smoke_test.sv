@@ -21,6 +21,14 @@ class axi_base_test extends uvm_test;
     int unsigned tally_writes = 0;
     int unsigned tally_reads  = 0;
 
+    // Cleared by axi_ral_test. RAL accesses originate inside uvm_reg
+    // rather than in a sequence's write()/read(), so the sequence-issued
+    // total cannot see them and comparing against it would be a
+    // guaranteed failure rather than a check. The driver-dispatched
+    // comparison below still applies there, and it is the one carrying
+    // the independence claim.
+    bit seq_counts_all = 1;
+
     function new(string name, uvm_component parent);
         super.new(name, parent);
     endfunction
@@ -69,30 +77,49 @@ class axi_base_test extends uvm_test;
     //------------------------------------------------------------------
     function void check_phase(uvm_phase phase);
         axi_monitor mon = env.agent.mon;
+        axi_driver  drv = env.agent.drv;
         int unsigned exp_w, exp_r;
         super.check_phase(phase);
 
-        exp_w = tally_writes - env.agent.drv.aborted_writes;
-        exp_r = tally_reads  - env.agent.drv.aborted_reads;
+        exp_w = drv.dispatched_writes - drv.aborted_writes;
+        exp_r = drv.dispatched_reads  - drv.aborted_reads;
 
         `uvm_info(get_type_name(),
-            $sformatf("issued %0d writes / %0d reads (%0d / %0d abandoned by reset) | monitor saw %0d / %0d | scoreboard got %0d / %0d",
+            $sformatf("sequences issued %0d/%0d | driver dispatched %0d/%0d (%0d/%0d abandoned by reset) | monitor saw %0d/%0d | scoreboard got %0d/%0d",
                       tally_writes, tally_reads,
-                      env.agent.drv.aborted_writes, env.agent.drv.aborted_reads,
+                      drv.dispatched_writes, drv.dispatched_reads,
+                      drv.aborted_writes, drv.aborted_reads,
                       mon.n_writes, mon.n_reads,
                       env.sb.n_writes, env.sb.n_reads), UVM_LOW)
 
+        // The load-bearing one. The monitor has no handle to the driver
+        // and reconstructs from pins alone, so agreement here means the
+        // pins carried what the driver was asked to put on them.
         if (mon.n_writes != exp_w)
             `uvm_error(get_type_name(),
-                $sformatf("monitor saw %0d writes, sequence issued %0d with %0d abandoned",
-                          mon.n_writes, tally_writes, env.agent.drv.aborted_writes))
+                $sformatf("monitor saw %0d writes, driver dispatched %0d with %0d abandoned",
+                          mon.n_writes, drv.dispatched_writes, drv.aborted_writes))
         if (mon.n_reads != exp_r)
             `uvm_error(get_type_name(),
-                $sformatf("monitor saw %0d reads, sequence issued %0d with %0d abandoned",
-                          mon.n_reads, tally_reads, env.agent.drv.aborted_reads))
+                $sformatf("monitor saw %0d reads, driver dispatched %0d with %0d abandoned",
+                          mon.n_reads, drv.dispatched_reads, drv.aborted_reads))
+
+        // A third path, where the test's sequences account for all the
+        // traffic. Not true for the RAL test -- see seq_counts_all.
+        if (seq_counts_all) begin
+            if (tally_writes != drv.dispatched_writes)
+                `uvm_error(get_type_name(),
+                    $sformatf("sequences issued %0d writes, driver dispatched %0d",
+                              tally_writes, drv.dispatched_writes))
+            if (tally_reads != drv.dispatched_reads)
+                `uvm_error(get_type_name(),
+                    $sformatf("sequences issued %0d reads, driver dispatched %0d",
+                              tally_reads, drv.dispatched_reads))
+        end
+
         if (env.sb.n_writes != mon.n_writes || env.sb.n_reads != mon.n_reads)
             `uvm_error(get_type_name(), "analysis port dropped transactions")
-        if (tally_writes == 0 && tally_reads == 0)
+        if (drv.dispatched_writes == 0 && drv.dispatched_reads == 0)
             `uvm_error(get_type_name(), "this test issued nothing at all")
     endfunction
 

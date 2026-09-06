@@ -137,16 +137,24 @@ module tb_top_sys;
     //   not to survive.
     //------------------------------------------------------------------
     uvm_event #(uvm_object) reset_ev;
+    uvm_event #(uvm_object) reset_done_ev;
     int                     reset_cycles = 5;
 
     initial begin
-        reset_ev = uvm_event_pool::get_global("axi_reset_request");
+        reset_ev      = uvm_event_pool::get_global("axi_reset_request");
+        reset_done_ev = uvm_event_pool::get_global("axi_reset_done");
         forever begin
             reset_ev.wait_trigger();
             @(posedge ACLK);
             ARESETn <= 1'b0;
             repeat (reset_cycles) @(posedge ACLK);
             ARESETn <= 1'b1;          // deassert on an active edge, spec section 1
+            // Give the driver's supervisor a cycle to restart its channel
+            // threads before the sequence resumes driving. Without it the
+            // first post-reset transaction can be dispatched into a
+            // driver whose channels are still being torn down.
+            repeat (3) @(posedge ACLK);
+            reset_done_ev.trigger();
         end
     end
 
