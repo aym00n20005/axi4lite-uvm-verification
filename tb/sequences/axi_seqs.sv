@@ -33,8 +33,77 @@ virtual class axi_base_seq extends uvm_sequence #(axi_transaction);
     int unsigned issued_writes = 0;
     int unsigned issued_reads  = 0;
 
+    // Set by the test. 0 means "leave the stream alone".
+    int unsigned seed = 0;
+
     function new(string name = "axi_base_seq");
         super.new(name);
+    endfunction
+
+    //------------------------------------------------------------------
+    // Seeding.
+    //
+    // process::self().srandom(), not this.srandom(). IEEE 1800-2017
+    // section 18.14.2: an object created with new() takes its RNG from
+    // the THREAD that called new, not from the enclosing object. Every
+    // transaction below is created inside body(), which runs in this
+    // sequence's own process -- so seeding the process is what makes the
+    // whole stream reproducible, and seeding the object would not.
+    //
+    // Xcelium reports "SVSEED default: 1" and Playground's fixed command
+    // line cannot change it, so without this every run of a test is
+    // byte-identical (docs/tooling_notes.md, 19 Aug). Excellent for
+    // debugging a failure; useless for a regression, which is many seeds
+    // of one test.
+    //
+    // pre_body rather than body so that no subclass has to remember: it
+    // is called automatically by start() unless call_pre_post is 0.
+    //------------------------------------------------------------------
+    task pre_body();
+        if (seed != 0) begin
+            process::self().srandom(seed);
+            `uvm_info(get_type_name(), $sformatf("seeded with %0d", seed), UVM_LOW)
+        end
+    endtask
+
+    //------------------------------------------------------------------
+    // Self-checking, in the base so every sequence counts the same way
+    // and axi_regression_test can total them.
+    //
+    // These are the SEQUENCE's own expectations, and they are not the
+    // scoreboard. The scoreboard checks every transaction against a
+    // spec-derived model fed by the monitor; a directed sequence checks
+    // the specific thing it was written to demonstrate, in the words of
+    // the spec paragraph it came from. When both are right they agree;
+    // when they disagree, having two independent statements is the whole
+    // point.
+    //------------------------------------------------------------------
+    int unsigned checks = 0;
+    int unsigned errors = 0;
+
+    function void check(string what, bit [31:0] got, bit [31:0] exp);
+        checks++;
+        if (got === exp)
+            `uvm_info(get_type_name(), $sformatf("  PASS  %-42s 0x%08h", what, got), UVM_LOW)
+        else begin
+            errors++;
+            `uvm_error(get_type_name(), $sformatf("  FAIL  %-42s 0x%08h (expected 0x%08h)",
+                                                  what, got, exp))
+        end
+    endfunction
+
+    function void check_true(string what, bit ok, bit [31:0] got);
+        checks++;
+        if (ok)
+            `uvm_info(get_type_name(), $sformatf("  PASS  %-42s 0x%08h", what, got), UVM_LOW)
+        else begin
+            errors++;
+            `uvm_error(get_type_name(), $sformatf("  FAIL  %-42s 0x%08h", what, got))
+        end
+    endfunction
+
+    function void section(string title);
+        `uvm_info(get_type_name(), $sformatf("---- %s ----", title), UVM_LOW)
     endfunction
 
     // Blocking write. Returns the response once the B handshake is done.
@@ -60,6 +129,9 @@ virtual class axi_base_seq extends uvm_sequence #(axi_transaction);
                   $sformatf("write  addr=0x%08h data=0x%08h strb=%04b -- issued",
                             addr, data, strb), UVM_HIGH)
         finish_item(t);
+        // completed goes high on an abort too -- reset cannot produce the
+        // B response this would otherwise wait forever for. See
+        // axi_transaction::aborted.
         wait (t.completed == 1'b1);
         issued_writes++;
         resp = t.resp;
@@ -117,22 +189,8 @@ class axi_smoke_seq extends axi_base_seq;
 
     `uvm_object_utils(axi_smoke_seq)
 
-    int errors = 0;
-    int checks = 0;
-
     function new(string name = "axi_smoke_seq");
         super.new(name);
-    endfunction
-
-    function void check(string what, bit [31:0] got, bit [31:0] exp);
-        checks++;
-        if (got === exp)
-            `uvm_info("SMOKE", $sformatf("  PASS  %-38s 0x%08h", what, got), UVM_LOW)
-        else begin
-            errors++;
-            `uvm_error("SMOKE", $sformatf("  FAIL  %-38s 0x%08h (expected 0x%08h)",
-                                          what, got, exp))
-        end
     endfunction
 
     task body();
@@ -493,22 +551,8 @@ class axi_mem_seq extends axi_base_seq;
 
     `uvm_object_utils(axi_mem_seq)
 
-    int errors = 0;
-    int checks = 0;
-
     function new(string name = "axi_mem_seq");
         super.new(name);
-    endfunction
-
-    function void check(string what, bit [31:0] got, bit [31:0] exp);
-        checks++;
-        if (got === exp)
-            `uvm_info("MEM", $sformatf("  PASS  %-38s 0x%08h", what, got), UVM_LOW)
-        else begin
-            errors++;
-            `uvm_error("MEM", $sformatf("  FAIL  %-38s 0x%08h (expected 0x%08h)",
-                                        what, got, exp))
-        end
     endfunction
 
     task body();

@@ -61,26 +61,121 @@ class axi_driver extends uvm_driver #(axi_transaction);
     endfunction
 
     //==================================================================
+    // Reset bookkeeping. Counted, not just handled: a transaction reset
+    // took away never reaches the monitor, so the end-of-test check
+    // "monitor saw what the sequence issued" needs the difference
+    // explained rather than tolerated.
+    //==================================================================
+    int unsigned aborted_writes = 0;
+    int unsigned aborted_reads  = 0;
+    int unsigned n_resets       = 0;
+
+    //==================================================================
     task run_phase(uvm_phase phase);
         drive_idle();
 
-        // Spec section 1: the testbench deasserts ARESETn on an active edge.
-        // `wait` rather than @(posedge) so an already-released reset does
-        // not hang the driver forever.
-        wait (vif.ARESETn === 1'b1);
-        `uvm_info(get_type_name(), "reset released; starting channel threads", UVM_MEDIUM)
-
-        // join_none: the five channels run for the rest of the
-        // simulation, independently of each other and of the main loop.
+        // main_loop is started ONCE and is never killed. It owns the
+        // sequencer handshake, and tearing down a component in the middle
+        // of get_next_item/item_done leaves the sequencer waiting for an
+        // item_done that will never come -- a hang whose cause is three
+        // components away from where it shows up.
+        //
+        // The five channel threads ARE killed and restarted, because they
+        // are the ones holding VALIDs high across a reset that spec
+        // section 3 rule 7 requires to be low.
         fork
-            aw_channel();
-            w_channel();
-            b_channel();
-            ar_channel();
-            r_channel();
+            main_loop();
+            reset_supervisor();
         join_none
+    endtask
 
-        main_loop();
+    //==================================================================
+    // Start the channels, run them until reset falls, tear them down,
+    // clean up, and start them again.
+    //
+    // The fork/join_any + `disable fork` idiom is the standard one and
+    // the nesting is not decoration: the extra `fork ... join` wrapper
+    // limits `disable fork` to the threads started inside it, so it
+    // cannot reach main_loop or this loop itself.
+    //==================================================================
+    task reset_supervisor();
+        forever begin
+            // `wait` rather than @(posedge): reset may already be
+            // released by the time this runs, and an edge that has
+            // happened never happens again.
+            wait (vif.ARESETn === 1'b1);
+            `uvm_info(get_type_name(), "reset released; starting channel threads", UVM_MEDIUM)
+
+            fork begin
+                fork
+                    aw_channel();
+                    w_channel();
+                    b_channel();
+                    ar_channel();
+                    r_channel();
+                    @(negedge vif.ARESETn);
+                join_any
+                disable fork;
+            end join
+
+            if (vif.ARESETn !== 1'b1) begin
+                n_resets++;
+                `uvm_info(get_type_name(),
+                          "ARESETn fell -- abandoning in-flight transactions", UVM_MEDIUM)
+                on_reset();
+                // Do not race the deassertion: wait for it explicitly
+                // before looking at ARESETn again.
+                @(posedge vif.ARESETn);
+            end
+        end
+    endtask
+
+    //==================================================================
+    // What reset actually costs, and why each line is here.
+    //==================================================================
+    task on_reset();
+        axi_transaction t;
+
+        // 1. Put the pins back. The channel threads died mid-handshake,
+        //    possibly with a VALID high; a_reset_valids_low watches
+        //    during reset and would fire, correctly.
+        drive_idle();
+
+        // 2. Retire everything queued or in flight. Each one gets
+        //    completed=1 so any sequence blocked on `wait (t.completed)`
+        //    is released, and aborted=1 so it can tell what happened.
+        //
+        //    b_q and r_q are the ones that matter -- a transaction is in
+        //    exactly one of them from dispatch until its response -- so
+        //    they are drained last and are the ones counted. Draining
+        //    aw_q/w_q/ar_q first prevents a restarted channel thread
+        //    from driving a beat belonging to a dead transaction.
+        while (aw_q.num() != 0) void'(aw_q.try_get(t));
+        while (w_q.num()  != 0) void'(w_q.try_get(t));
+        while (ar_q.num() != 0) void'(ar_q.try_get(t));
+
+        while (b_q.num() != 0) begin
+            void'(b_q.try_get(t));
+            t.resp = 2'b00; t.aborted = 1'b1; t.completed = 1'b1;
+            aborted_writes++;
+        end
+        while (r_q.num() != 0) begin
+            void'(r_q.try_get(t));
+            t.resp = 2'b00; t.rdata = 32'h0; t.aborted = 1'b1; t.completed = 1'b1;
+            aborted_reads++;
+        end
+
+        // 3. Release the slots. main_loop may be blocked inside
+        //    dispatch() on one of these, and nothing else will ever
+        //    release it -- the b_channel thread that would have is dead.
+        //
+        //    try_get-then-put rather than a bare put: a bare put on a
+        //    slot that was already free makes the count 2 and quietly
+        //    permits two outstanding writes, which spec section 1 forbids
+        //    and a_single_outstanding_write would then catch several
+        //    thousand cycles later.
+        void'(write_slot.try_get(1)); write_slot.put(1);
+        void'(read_slot .try_get(1)); read_slot .put(1);
     endtask
 
     //==================================================================

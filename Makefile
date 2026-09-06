@@ -10,7 +10,9 @@
 #   make test SIM=icarus      functional only; Icarus cannot do SVA
 #   make coverage             cover-property counts
 #   make lint                 Verilator -Wall on the RTL
-#   make playground PLAY=x    bundle UVM (hello|rand_smoke|smoke|random|mem)
+#   make playground PLAY=x    bundle UVM for EDA Playground
+#                             sys | ral | rand      <- the three that matter
+#                             hello|rand_smoke|smoke|random|mem  (single-slave)
 #   make clean
 #
 # Deliberately thin: it wraps the scripts rather than duplicating the
@@ -101,6 +103,10 @@ regcheck:
 #---------------------------------------------------------------------
 PLAY ?= rand_smoke
 
+# Playground's command line is fixed, so the seed travels as a define
+# written into the generated bundle: `make playground PLAY=rand SEED=7`.
+SEED ?= 1
+
 PLAY_rand_smoke := tb/agent/axi_transaction.sv tb/agent/axi_sequencer.sv tb/uvm/axi_rand_smoke.sv
 PLAY_hello      := tb/uvm/uvm_hello.sv
 
@@ -114,10 +120,12 @@ PLAY_smoke_DESIGN := tb/interface/axi4lite_if.sv $(REG_PKG) rtl/axi4lite_reg_sla
                      tb/interface/axi4lite_reg_bind.sv
 PLAY_smoke        := tb/agent/axi_transaction.sv tb/agent/axi_sequencer.sv \
                      tb/agent/axi_driver.sv tb/agent/axi_monitor.sv \
-                     tb/agent/axi_master_agent.sv tb/sequences/axi_seqs.sv \
+                     tb/agent/axi_master_agent.sv \
+                     tb/ral/axi_reg_block.sv tb/ral/axi_reg_adapter.sv \
+                     tb/sequences/axi_seqs.sv \
                      tb/env/axi_scoreboard.sv tb/env/axi_coverage.sv tb/env/axi_env.sv \
                      tb/tests/axi_smoke_test.sv tb/tests/axi_random_test.sv \
-                     tb/tests/tb_top.sv
+                     tb/tests/axi_watchdog.sv tb/tests/tb_top.sv
 
 # The memory slave's own top. A separate DUT and a separate bind, because
 # there is no interconnect: each top has exactly one slave.
@@ -125,10 +133,12 @@ PLAY_mem_DESIGN := tb/interface/axi4lite_if.sv rtl/axi4lite_mem_slave.sv \
                    tb/interface/axi4lite_mem_bind.sv
 PLAY_mem        := tb/agent/axi_transaction.sv tb/agent/axi_sequencer.sv \
                    tb/agent/axi_driver.sv tb/agent/axi_monitor.sv \
-                   tb/agent/axi_master_agent.sv tb/sequences/axi_seqs.sv \
+                   tb/agent/axi_master_agent.sv \
+                   tb/ral/axi_reg_block.sv tb/ral/axi_reg_adapter.sv \
+                   tb/sequences/axi_seqs.sv \
                    tb/env/axi_scoreboard.sv tb/env/axi_coverage.sv tb/env/axi_env.sv \
                    tb/tests/axi_smoke_test.sv tb/tests/axi_mem_test.sv \
-                   tb/tests/tb_top_mem.sv
+                   tb/tests/axi_watchdog.sv tb/tests/tb_top_mem.sv
 
 # Identical sources; the bundle differs only in which test AXI_TEST names.
 # Must come AFTER PLAY_smoke: ':=' expands immediately, so referencing it
@@ -136,6 +146,45 @@ PLAY_mem        := tb/agent/axi_transaction.sv tb/agent/axi_sequencer.sv \
 PLAY_random_DESIGN := $(PLAY_smoke_DESIGN)
 PLAY_random        := $(PLAY_smoke)
 PLAY_random_DEFINE := `define AXI_TEST "axi_random_test"
+
+#---------------------------------------------------------------------
+# The three system bundles -- the ones that actually get pasted.
+#
+# tb_top_sys holds the interconnect and BOTH slaves, so one bundle can
+# host every test in the vplan rather than one bundle per slave per
+# test. Sixteen tests and several seeds cost three pastes.
+#
+# All three share a DESIGN pane: the register-map package, the
+# interface, both slaves, the interconnect, and all three binds.
+#---------------------------------------------------------------------
+PLAY_SYS_DESIGN := tb/interface/axi4lite_if.sv $(REG_PKG) \
+                   rtl/axi4lite_reg_slave.sv rtl/axi4lite_mem_slave.sv \
+                   rtl/axi4lite_interconnect.sv \
+                   tb/interface/axi4lite_reg_bind.sv \
+                   tb/interface/axi4lite_mem_bind.sv \
+                   tb/interface/axi4lite_sys_bind.sv
+
+PLAY_SYS_TB := tb/agent/axi_transaction.sv tb/agent/axi_sequencer.sv \
+               tb/agent/axi_driver.sv tb/agent/axi_monitor.sv \
+               tb/agent/axi_master_agent.sv \
+               tb/ral/axi_reg_block.sv tb/ral/axi_reg_adapter.sv \
+               tb/sequences/axi_seqs.sv tb/sequences/axi_directed_seqs.sv \
+               tb/env/axi_scoreboard.sv tb/env/axi_coverage.sv tb/env/axi_env.sv \
+               tb/tests/axi_smoke_test.sv tb/tests/axi_random_test.sv \
+               tb/tests/axi_mem_test.sv tb/tests/axi_directed_tests.sv \
+               tb/tests/axi_watchdog.sv tb/tests/tb_top_sys.sv
+
+PLAY_sys_DESIGN := $(PLAY_SYS_DESIGN)
+PLAY_sys        := $(PLAY_SYS_TB)
+PLAY_sys_DEFINE := `define AXI_TEST "axi_regression_test"
+
+PLAY_ral_DESIGN := $(PLAY_SYS_DESIGN)
+PLAY_ral        := $(PLAY_SYS_TB)
+PLAY_ral_DEFINE := `define AXI_TEST "axi_ral_test"
+
+PLAY_rand_DESIGN := $(PLAY_SYS_DESIGN)
+PLAY_rand        := $(PLAY_SYS_TB)
+PLAY_rand_DEFINE := `define AXI_TEST "axi_multiseed_test"
 
 playground:
 	@mkdir -p sim

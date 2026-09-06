@@ -20,6 +20,12 @@
   `define AXI_TEST "axi_mem_test"
 `endif
 
+// See tb_top.sv: Playground's command line is fixed, so the seed and the
+// waveform switch arrive as defines written by `make playground`.
+`ifndef AXI_SEED
+  `define AXI_SEED 1
+`endif
+
 module tb_top_mem;
 
     logic ACLK = 1'b0;
@@ -56,39 +62,25 @@ module tb_top_mem;
     end
 
 
-    //------------------------------------------------------------------
-    // Watchdog.
-    //
-    // A hang is the one failure mode this environment could not report.
-    // EDA Playground kills an over-running job with exit 137 and no
-    // message, so a stalled handshake produced no evidence at all. This
-    // turns that into a bus-state dump naming the channel that is stuck.
-    //
-    // Every stall has a signature: VALID high with READY low means the
-    // slave is not accepting; both low on a channel that should be busy
-    // means the driver never issued.
-    //------------------------------------------------------------------
-    initial begin
-        #50us;
-        $display("");
-        $display("=================== WATCHDOG ===================");
-        $display(" no completion by 50us. ARESETn=%b", ARESETn);
-        $display("   AW  VALID=%b READY=%b  ADDR=0x%08h", vif.AWVALID, vif.AWREADY, vif.AWADDR);
-        $display("   W   VALID=%b READY=%b  DATA=0x%08h STRB=%04b",
-                 vif.WVALID, vif.WREADY, vif.WDATA, vif.WSTRB);
-        $display("   B   VALID=%b READY=%b  RESP=%02b", vif.BVALID, vif.BREADY, vif.BRESP);
-        $display("   AR  VALID=%b READY=%b  ADDR=0x%08h", vif.ARVALID, vif.ARREADY, vif.ARADDR);
-        $display("   R   VALID=%b READY=%b  DATA=0x%08h RESP=%02b",
-                 vif.RVALID, vif.RREADY, vif.RDATA, vif.RRESP);
-        $display("================================================");
-        $fatal(1, "watchdog: bus stalled");
-    end
+    // One instance per top -- see tb/tests/axi_watchdog.sv for why it
+    // watches inactivity rather than elapsed time.
+    axi_watchdog u_wdog (
+        .ACLK    (ACLK),       .ARESETn (ARESETn),
+        .AWADDR  (vif.AWADDR), .AWVALID (vif.AWVALID), .AWREADY (vif.AWREADY),
+        .WDATA   (vif.WDATA),  .WSTRB   (vif.WSTRB),   .WVALID  (vif.WVALID),  .WREADY (vif.WREADY),
+        .BRESP   (vif.BRESP),  .BVALID  (vif.BVALID),  .BREADY  (vif.BREADY),
+        .ARADDR  (vif.ARADDR), .ARVALID (vif.ARVALID), .ARREADY (vif.ARREADY),
+        .RDATA   (vif.RDATA),  .RRESP   (vif.RRESP),   .RVALID  (vif.RVALID),  .RREADY (vif.RREADY)
+    );
 
     initial begin
+`ifdef AXI_DUMP
         $dumpfile("dump.vcd");
         $dumpvars(0, tb_top_mem);
+`endif
         uvm_config_db #(virtual axi4lite_if)::set(null, "*", "vif", vif);
         uvm_config_db #(axi_slave_kind_e)::set(null, "*", "slave_kind", SLAVE_MEM);
+        uvm_config_db #(int unsigned)::set(null, "*", "axi_seed", `AXI_SEED);
         run_test(`AXI_TEST);
     end
 

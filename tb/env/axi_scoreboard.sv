@@ -12,20 +12,30 @@
 // nothing.
 //
 //----------------------------------------------------------------------
-// SCOPE: models ONE slave, chosen by the slave_kind config -- whichever
-// the testbench top instantiated. There is no interconnect yet, so there
-// is no address decode to route between them; each top has exactly one
-// DUT and the model must match it.
+// SCOPE: three modes, chosen by the slave_kind config.
 //
-// That is why slave_kind is required rather than inferred. Standalone,
-// each slave aliases the whole address space onto its own decode: the
-// register slave sees ADDR[11:0], so 0x1000 lands on CTRL, and the memory
-// slave sees ADDR[9:2], so 0x0000 lands on word 0. Both are correct --
-// routing is the interconnect's job -- but the model cannot guess which
-// aliasing applies. It is told.
+//   SLAVE_REG   the register slave alone, driven directly
+//   SLAVE_MEM   the memory slave alone, driven directly
+//   SLAVE_SYS   interconnect + both slaves -- a real address decode
 //
-// In September the interconnect makes this a real decode and both models
-// run side by side, which is the shape they are already written in.
+// The first two exist because a slave driven standalone aliases the
+// whole address space onto its own decode: the register slave sees
+// ADDR[11:0], so 0x1000 lands on CTRL, and the memory slave sees
+// ADDR[9:2], so 0x0000 lands on word 0. Both are correct -- routing is
+// the interconnect's job -- and the model cannot guess which aliasing
+// applies, so it is told.
+//
+// SLAVE_SYS is the one this file was written in anticipation of, and it
+// changes nothing below it: the register model and the memory model are
+// unchanged and now run side by side, with a decode in front deciding
+// which of them owns each transaction and answering DECERR itself for
+// the addresses that belong to neither.
+//
+// The decode is derived from spec section 4 HERE, independently, and not
+// imported from the interconnect's localparams or from
+// axi4lite_reg_pkg. A reference model that shares constants with the
+// design agrees with the design by construction, which is exactly the
+// class of defect BUG-007 was.
 //----------------------------------------------------------------------
 // WHAT CANNOT BE PREDICTED, and why it is skipped rather than fudged:
 //
@@ -66,8 +76,15 @@ localparam bit [2:0] SB_ID         = 3'd7;
 
 localparam bit [1:0] SB_OKAY   = 2'b00;
 localparam bit [1:0] SB_SLVERR = 2'b10;
+localparam bit [1:0] SB_DECERR = 2'b11;
 
-typedef enum { SLAVE_REG, SLAVE_MEM } axi_slave_kind_e;
+// Spec section 4's map. Written from the specification, not read off the
+// interconnect.
+localparam bit [31:0] SB_REG_LIMIT = 32'h0000_0FFF;
+localparam bit [31:0] SB_MEM_BASE  = 32'h0000_1000;
+localparam bit [31:0] SB_MEM_LIMIT = 32'h0000_13FF;
+
+typedef enum { SLAVE_REG, SLAVE_MEM, SLAVE_SYS } axi_slave_kind_e;
 
 
 class axi_scoreboard extends uvm_component;
@@ -140,15 +157,79 @@ class axi_scoreboard extends uvm_component;
     function bit [2:0] reg_index(bit [31:0] a);      return a[4:2];               endfunction
 
     //==================================================================
+    // System decode -- spec section 4. Only consulted in SLAVE_SYS.
+    //
+    // A range test, deliberately, and for the same reason the RTL uses
+    // one: the unmapped gap at 0x1400-0x1FFF sits inside what a single
+    // ADDR[12] test would call memory. If this model used a bit test it
+    // would agree with a BUG-005-style decode and the scoreboard would
+    // pass the very defect spec section 9 assigns to it.
+    //==================================================================
+    function bit is_reg_region(bit [31:0] a); return a <= SB_REG_LIMIT; endfunction
+    function bit is_mem_region(bit [31:0] a);
+        return (a >= SB_MEM_BASE) && (a <= SB_MEM_LIMIT);
+    endfunction
+    function bit is_unmapped(bit [31:0] a);   return a > SB_MEM_LIMIT;  endfunction
+
+    //==================================================================
     function void write(axi_transaction t);
+        bit to_mem, to_none;
+
+        // SLAVE_SYS routes; the other two modes are told which model to
+        // use and every address goes there.
+        to_none = (slave_kind == SLAVE_SYS) && is_unmapped(t.addr);
+        to_mem  = (slave_kind == SLAVE_MEM) ||
+                  ((slave_kind == SLAVE_SYS) && is_mem_region(t.addr));
+
         if (t.kind == AXI_WRITE) begin
             n_writes++;
-            if (slave_kind == SLAVE_MEM) check_write_mem(t);
-            else                         check_write(t);
+            if      (to_none) check_unmapped(t);
+            else if (to_mem)  check_write_mem(t);
+            else              check_write(t);
         end else begin
             n_reads++;
-            if (slave_kind == SLAVE_MEM) check_read_mem(t);
-            else                         check_read(t);
+            if      (to_none) check_unmapped(t);
+            else if (to_mem)  check_read_mem(t);
+            else              check_read(t);
+        end
+    endfunction
+
+    //==================================================================
+    // Unmapped -- spec section 4.
+    //
+    // DECERR, and NOTHING ELSE HAPPENS. Three separate claims, and all
+    // three are checked here rather than assumed:
+    //
+    //   the response is DECERR and not SLVERR -- the distinction is the
+    //   difference between "no slave owns this" and "a slave owns it and
+    //   said no";
+    //
+    //   RDATA is a deterministic zero on a read (section 4, added in
+    //   v0.3 so the model can check it rather than mask it);
+    //
+    //   no INT_STATUS bit is set and STATUS.error does not move. The
+    //   transaction is terminated by the interconnect and never reaches
+    //   the register slave, so nothing in the register model may change.
+    //   That last one is a silent claim -- there is no signal for it --
+    //   and it is enforced by this function simply not touching the
+    //   model. Any future edit that "helpfully" sets a bit here breaks
+    //   spec section 4's parenthesis: "no INT_STATUS bit, since the slave
+    //   never sees the transaction".
+    //
+    // Precedence matters too: unmapped OUTRANKS misaligned, so a
+    // misaligned address above 0x13FF is DECERR, not SLVERR. That is why
+    // this runs before any alignment test.
+    //==================================================================
+    function void check_unmapped(axi_transaction t);
+        n_resp_checked++;
+        if (t.resp !== SB_DECERR)
+            report_mismatch(t.kind == AXI_WRITE ? "BRESP" : "RRESP",
+                            t, {30'b0, t.resp}, {30'b0, SB_DECERR});
+
+        if (t.kind == AXI_READ) begin
+            n_data_checked++;
+            if (t.rdata !== 32'h0)
+                report_mismatch("RDATA", t, t.rdata, 32'h0);
         end
     endfunction
 

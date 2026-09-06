@@ -12,6 +12,23 @@
   `define AXI_TEST "axi_smoke_test"
 `endif
 
+// EDA Playground's command line is FIXED: no +UVM_TESTNAME, no +SVSEED,
+// no plusargs at all. A define is the only thing a bundle can set, so
+// the seed arrives the same way the test name does -- `make playground
+// PLAY=x SEED=n` writes it into the generated file.
+//
+// Without this, Xcelium reports "SVSEED default: 1" and two runs of the
+// same test randomise identically (docs/tooling_notes.md, 19 Aug). That
+// is excellent for debugging and useless for a regression, which is many
+// seeds of one test.
+`ifndef AXI_SEED
+  `define AXI_SEED 1
+`endif
+
+// VCD dumping is off unless asked for. A regression run does not want a
+// waveform per seed, and the counter test alone is 65,536 cycles.
+//`define AXI_DUMP
+
 module tb_top;
 
     logic ACLK = 1'b0;
@@ -76,42 +93,28 @@ module tb_top;
     end
 
 
-    //------------------------------------------------------------------
-    // Watchdog.
-    //
-    // A hang is the one failure mode this environment could not report.
-    // EDA Playground kills an over-running job with exit 137 and no
-    // message, so a stalled handshake produced no evidence at all. This
-    // turns that into a bus-state dump naming the channel that is stuck.
-    //
-    // Every stall has a signature: VALID high with READY low means the
-    // slave is not accepting; both low on a channel that should be busy
-    // means the driver never issued.
-    //------------------------------------------------------------------
-    initial begin
-        #50us;
-        $display("");
-        $display("=================== WATCHDOG ===================");
-        $display(" no completion by 50us. ARESETn=%b", ARESETn);
-        $display("   AW  VALID=%b READY=%b  ADDR=0x%08h", vif.AWVALID, vif.AWREADY, vif.AWADDR);
-        $display("   W   VALID=%b READY=%b  DATA=0x%08h STRB=%04b",
-                 vif.WVALID, vif.WREADY, vif.WDATA, vif.WSTRB);
-        $display("   B   VALID=%b READY=%b  RESP=%02b", vif.BVALID, vif.BREADY, vif.BRESP);
-        $display("   AR  VALID=%b READY=%b  ADDR=0x%08h", vif.ARVALID, vif.ARREADY, vif.ARADDR);
-        $display("   R   VALID=%b READY=%b  DATA=0x%08h RESP=%02b",
-                 vif.RVALID, vif.RREADY, vif.RDATA, vif.RRESP);
-        $display("================================================");
-        $fatal(1, "watchdog: bus stalled");
-    end
+    // One instance per top -- see tb/tests/axi_watchdog.sv for why it
+    // watches inactivity rather than elapsed time.
+    axi_watchdog u_wdog (
+        .ACLK    (ACLK),       .ARESETn (ARESETn),
+        .AWADDR  (vif.AWADDR), .AWVALID (vif.AWVALID), .AWREADY (vif.AWREADY),
+        .WDATA   (vif.WDATA),  .WSTRB   (vif.WSTRB),   .WVALID  (vif.WVALID),  .WREADY (vif.WREADY),
+        .BRESP   (vif.BRESP),  .BVALID  (vif.BVALID),  .BREADY  (vif.BREADY),
+        .ARADDR  (vif.ARADDR), .ARVALID (vif.ARVALID), .ARREADY (vif.ARREADY),
+        .RDATA   (vif.RDATA),  .RRESP   (vif.RRESP),   .RVALID  (vif.RVALID),  .RREADY (vif.RREADY)
+    );
 
     initial begin
+`ifdef AXI_DUMP
         $dumpfile("dump.vcd");
         // Scoped to tb_top. A bare $dumpvars probes the UVM package too
         // and produces *W,PRPASZ on its 115200-bit string arrays.
         $dumpvars(0, tb_top);
+`endif
         // "*" because every component wants the same interface. A narrow
         // scope would be wrong here, unlike is_active.
         uvm_config_db #(virtual axi4lite_if)::set(null, "*", "vif", vif);
+        uvm_config_db #(int unsigned)::set(null, "*", "axi_seed", `AXI_SEED);
         // AXI_TEST is defined by `make playground` per bundle. EDA
         // Playground's command line is fixed, so +UVM_TESTNAME is not
         // available; a define is how a bundle selects its test.

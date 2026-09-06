@@ -30,18 +30,43 @@
 // "cg_wstrb 19%" tells you to write more tests; "cg_wstrb missing 0000,
 // 0001, 0010 ..." tells you which ones.
 //
-// Covers the eight groups from vplan section 5 that a transaction-level
-// observer can see. The remainder -- cg_valid_delay, cg_backpressure,
-// cg_reset -- need per-cycle timing the monitor does not currently
-// record, and are listed as outstanding rather than faked.
+// ALL ELEVEN groups from vplan section 5 are modelled here.
+//
+// Three of them -- cg_valid_delay, cg_backpressure, cg_reset -- were
+// listed as outstanding rather than faked, with one stated cause: they
+// "need per-cycle timing the monitor does not record". The monitor now
+// records it (see axi_monitor.sv), so they are modelled, and they are
+// still fed from observation:
+//
+//   cg_valid_delay   the idle gap a request channel showed before VALID
+//                    rose -- NOT the driver's aw_delay, which is counted
+//                    from an instant no pin shows.
+//   cg_backpressure  cycles a response was held with the master's READY
+//                    low.
+//   cg_reset         whether anything was in flight when ARESETn fell,
+//                    answered from the monitor's own accept queues.
+//
+// cg_reset arrives on a SECOND analysis port, because a reset is not a
+// transaction and putting it on the transaction port would have meant
+// inventing a transaction that never happened.
 //======================================================================
 
 typedef enum { ERR_NONE, ERR_UNIMPL, ERR_MISALIGN, ERR_STROBE } axi_err_src_e;
+
+// vplan section 5's three bins, named.
+typedef enum { RESET_IDLE, RESET_MID_WRITE, RESET_MID_READ } axi_reset_kind_e;
+
+// A second imp on a subscriber needs a declared suffix. UVM's
+// uvm_subscriber gives exactly one analysis_export, and cg_reset needs
+// a port carrying a different type.
+`uvm_analysis_imp_decl(_rst)
 
 
 class axi_coverage extends uvm_subscriber #(axi_transaction);
 
     `uvm_component_utils(axi_coverage)
+
+    uvm_analysis_imp_rst #(axi_reset_event, axi_coverage) rst_export;
 
     // Sampled values. Computed in write() before sampling, so every
     // coverpoint is a plain variable reference.
@@ -57,7 +82,16 @@ class axi_coverage extends uvm_subscriber #(axi_transaction);
     axi_order_e   c_order;
     bit           c_order_valid;
 
+    // Cycle-level, from the monitor. c_timing_valid gates the two timing
+    // groups so a transaction whose timing was not observed cannot land
+    // in a bin -- an unset int is 0, and 0 is a legitimate bin here.
+    int unsigned     c_valid_delay;
+    int unsigned     c_backpressure;
+    bit              c_timing_valid;
+    axi_reset_kind_e c_reset_kind;
+
     int unsigned n_sampled = 0;
+    int unsigned n_resets_seen = 0;
 
     // Hand tally: key is "group|bin". Every expected bin is declared at
     // construction with a count of 0, so a bin that is never hit is
@@ -130,6 +164,37 @@ class axi_coverage extends uvm_subscriber #(axi_transaction);
         order_cp : coverpoint c_order iff (c_order_valid);
     endgroup
 
+    // Bin edges are vplan section 5's, exactly: 0, 1-3, 4-10, >10.
+    // axi_transaction's delay distribution is built to the same edges,
+    // so all four are reachable by construction rather than by hoping a
+    // uniform range happens to spread.
+    covergroup cg_valid_delay;
+        option.per_instance = 1;
+        delay_cp : coverpoint c_valid_delay iff (c_timing_valid) {
+            bins d0     = {0};
+            bins d1_3   = {[1:3]};
+            bins d4_10  = {[4:10]};
+            bins d_over = {[11:$]};
+        }
+    endgroup
+
+    covergroup cg_backpressure;
+        option.per_instance = 1;
+        bp_cp : coverpoint c_backpressure iff (c_timing_valid) {
+            bins d0     = {0};
+            bins d1_3   = {[1:3]};
+            bins d4_10  = {[4:10]};
+            bins d_over = {[11:$]};
+        }
+    endgroup
+
+    // Sampled from the reset port, not from write(). Its three bins are
+    // vplan section 5's: reset idle, reset mid-write, reset mid-read.
+    covergroup cg_reset;
+        option.per_instance = 1;
+        reset_cp : coverpoint c_reset_kind;
+    endgroup
+
     //------------------------------------------------------------------
     // Crosses, vplan section 5
     //------------------------------------------------------------------
@@ -154,10 +219,41 @@ class axi_coverage extends uvm_subscriber #(axi_transaction);
         tp : cross t, p;
     endgroup
 
+    // vplan section 5: "cg_transaction_type x cg_backpressure -- reads and
+    // writes both stalled". The last of the four listed crosses, and the
+    // one that had no group to cross against until now.
+    covergroup cg_type_x_backpressure;
+        option.per_instance = 1;
+        t  : coverpoint c_kind iff (c_timing_valid);
+        b  : coverpoint c_backpressure iff (c_timing_valid) {
+            bins d0     = {0};
+            bins d1_3   = {[1:3]};
+            bins d4_10  = {[4:10]};
+            bins d_over = {[11:$]};
+        }
+        tb : cross t, b;
+    endgroup
+
     //------------------------------------------------------------------
     //------------------------------------------------------------------
     // Hand-tally plumbing
+    //
+    // Declared ahead of declare_all(), which uses them. A class property
+    // referenced above its own declaration is accepted by some tools and
+    // rejected by a conformant front end -- the same portability trap as
+    // BUG-010, caught the same way, by `make elab`.
     //------------------------------------------------------------------
+
+    // vplan section 5's bin edges, in one place, used by both mechanisms.
+    string delay_bin_names [4] = '{"d0", "d1_3", "d4_10", "d_over"};
+
+    function string delay_bin(int unsigned n);
+        if (n == 0)  return delay_bin_names[0];
+        if (n <= 3)  return delay_bin_names[1];
+        if (n <= 10) return delay_bin_names[2];
+        return delay_bin_names[3];
+    endfunction
+
     function void declare_group(string g);
         groups.push_back(g);
     endfunction
@@ -227,10 +323,26 @@ class axi_coverage extends uvm_subscriber #(axi_transaction);
         declare_bin("cg_aw_w_order", "ORDER_AW_FIRST");
         declare_bin("cg_aw_w_order", "ORDER_W_FIRST");
         declare_bin("cg_aw_w_order", "ORDER_SAME_CYCLE");
+
+        // Same four edges as the covergroups above, and the same names,
+        // so the two mechanisms can be compared line for line.
+        declare_group("cg_valid_delay");
+        declare_group("cg_backpressure");
+        foreach (delay_bin_names[i]) begin
+            declare_bin("cg_valid_delay",  delay_bin_names[i]);
+            declare_bin("cg_backpressure", delay_bin_names[i]);
+        end
+
+        declare_group("cg_reset");
+        declare_bin("cg_reset", "RESET_IDLE");
+        declare_bin("cg_reset", "RESET_MID_WRITE");
+        declare_bin("cg_reset", "RESET_MID_READ");
     endfunction
+
 
     function new(string name, uvm_component parent);
         super.new(name, parent);
+        rst_export = new("rst_export", this);
         declare_all();
         cg_transaction_type = new();
         cg_address_region   = new();
@@ -240,9 +352,13 @@ class axi_coverage extends uvm_subscriber #(axi_transaction);
         cg_response         = new();
         cg_error_source     = new();
         cg_aw_w_order       = new();
+        cg_valid_delay      = new();
+        cg_backpressure     = new();
+        cg_reset            = new();
         cg_type_x_region    = new();
         cg_wstrb_x_align    = new();
         cg_type_x_response  = new();
+        cg_type_x_backpressure = new();
     endfunction
 
     //------------------------------------------------------------------
@@ -277,6 +393,9 @@ class axi_coverage extends uvm_subscriber #(axi_transaction);
         c_err          = err_of(t);
         c_order        = t.obs_order;
         c_order_valid  = t.obs_order_valid;
+        c_valid_delay  = t.obs_valid_delay;
+        c_backpressure = t.obs_backpressure;
+        c_timing_valid = t.obs_timing_valid;
 
         cg_transaction_type.sample();
         cg_address_region  .sample();
@@ -286,9 +405,12 @@ class axi_coverage extends uvm_subscriber #(axi_transaction);
         cg_response        .sample();
         cg_error_source    .sample();
         cg_aw_w_order      .sample();
+        cg_valid_delay     .sample();
+        cg_backpressure    .sample();
         cg_type_x_region   .sample();
         cg_wstrb_x_align   .sample();
         cg_type_x_response .sample();
+        cg_type_x_backpressure.sample();
 
         // ...and the tally, which no tool switch can disable.
         hit("cg_transaction_type", c_kind.name());
@@ -309,8 +431,32 @@ class axi_coverage extends uvm_subscriber #(axi_transaction);
             hit("cg_wstrb", $sformatf("%04b", c_strb));
         if (c_order_valid)
             hit("cg_aw_w_order", c_order.name());
+        if (c_timing_valid) begin
+            hit("cg_valid_delay",  delay_bin(c_valid_delay));
+            hit("cg_backpressure", delay_bin(c_backpressure));
+        end
 
         n_sampled++;
+    endfunction
+
+    //------------------------------------------------------------------
+    // The second port. Reset is an event, not a transaction.
+    //
+    // A reset that lands while both a write and a read are in flight is
+    // recorded as mid-write: the bins are a classification of one event
+    // and cannot both be true. Write is chosen because it is the one with
+    // two halves and therefore the one with more ways to go wrong -- and
+    // that choice is written down rather than left to whichever branch
+    // happened to be first.
+    //------------------------------------------------------------------
+    function void write_rst(axi_reset_event ev);
+        if      (ev.during_write) c_reset_kind = RESET_MID_WRITE;
+        else if (ev.during_read)  c_reset_kind = RESET_MID_READ;
+        else                      c_reset_kind = RESET_IDLE;
+
+        cg_reset.sample();
+        hit("cg_reset", c_reset_kind.name());
+        n_resets_seen++;
     endfunction
 
     //------------------------------------------------------------------
@@ -352,7 +498,8 @@ class axi_coverage extends uvm_subscriber #(axi_transaction);
 
     function void report_phase(uvm_phase phase);
         super.report_phase(phase);
-        `uvm_info("COV", $sformatf("functional coverage over %0d observed transactions", n_sampled), UVM_LOW)
+        `uvm_info("COV", $sformatf("functional coverage over %0d observed transactions and %0d reset events",
+                                   n_sampled, n_resets_seen), UVM_LOW)
         report_line("cg_transaction_type", cg_transaction_type.get_inst_coverage(), "100%");
         report_line("cg_address_region",   cg_address_region  .get_inst_coverage(), "100%");
         report_line("cg_register_offset",  cg_register_offset .get_inst_coverage(), "100%");
@@ -361,15 +508,19 @@ class axi_coverage extends uvm_subscriber #(axi_transaction);
         report_line("cg_response",         cg_response        .get_inst_coverage(), "100%");
         report_line("cg_error_source",     cg_error_source    .get_inst_coverage(), "100%");
         report_line("cg_aw_w_order",       cg_aw_w_order      .get_inst_coverage(), "100%");
+        report_line("cg_valid_delay",      cg_valid_delay     .get_inst_coverage(), "100%");
+        report_line("cg_backpressure",     cg_backpressure    .get_inst_coverage(), "100%");
+        report_line("cg_reset",            cg_reset           .get_inst_coverage(), "100%");
         report_line("cross type x region", cg_type_x_region   .get_inst_coverage(), "100%");
         report_line("cross wstrb x align", cg_wstrb_x_align   .get_inst_coverage(), "100%");
         report_line("cross type x resp",   cg_type_x_response .get_inst_coverage(), "100%");
+        report_line("cross type x bp",     cg_type_x_backpressure.get_inst_coverage(), "100%");
         `uvm_info("COV",
             "the percentages above are 0.00 unless the simulator was invoked with coverage enabled (Xcelium: -coverage functional). The tally below does not depend on that.",
             UVM_LOW)
         report_tally();
         `uvm_info("COV",
-            "not modelled here: cg_valid_delay, cg_backpressure, cg_reset -- these need per-cycle timing the monitor does not record",
+            "all eleven vplan section 5 groups are modelled. cg_valid_delay and cg_backpressure read the monitor's observed cycle counts, not the driver's delay knobs; cg_reset reads the monitor's own accept queues, not the driver's state.",
             UVM_LOW)
     endfunction
 

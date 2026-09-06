@@ -25,6 +25,36 @@ typedef enum {
 typedef enum { ORDER_AW_FIRST, ORDER_W_FIRST, ORDER_SAME_CYCLE } axi_order_e;
 
 
+//======================================================================
+// axi_reset_event
+//
+// Reset is not a transaction, so it does not travel on the transaction
+// analysis port. vplan section 5's cg_reset needs three bins -- idle,
+// mid-write, mid-read -- and "was anything in flight when ARESETn
+// fell?" is a question only the monitor can answer, from its own accept
+// queues, without asking the driver.
+//======================================================================
+class axi_reset_event extends uvm_object;
+
+    `uvm_object_utils(axi_reset_event)
+
+    bit          during_write;   // an accepted AW or W had no B response yet
+    bit          during_read;    // an accepted AR had no R response yet
+    int unsigned cycles_low;     // how long ARESETn stayed low
+
+    function new(string name = "axi_reset_event");
+        super.new(name);
+    endfunction
+
+    function string convert2string();
+        return $sformatf("RESET low %0d cycles%s%s", cycles_low,
+                         during_write ? " during a WRITE" : "",
+                         during_read  ? " during a READ"  : "");
+    endfunction
+
+endclass : axi_reset_event
+
+
 class axi_transaction extends uvm_sequence_item;
 
     //------------------------------------------------------------------
@@ -58,6 +88,15 @@ class axi_transaction extends uvm_sequence_item;
     bit [31:0] rdata;
     bit        completed;
 
+    // Set by the driver when reset took the transaction away before the
+    // bus could answer it. completed still goes high -- sequences wait on
+    // it, and a sequence that waits forever for a response the DUT is
+    // forbidden to give (spec section 3 rule 7 holds every VALID low in
+    // reset) is a hang, not a test. `aborted` is how a waiter tells "it
+    // finished" from "it was cancelled", and how the end-of-test count
+    // check stays exact across a reset test.
+    bit        aborted;
+
     // Filled in by the MONITOR from observed accept timing, not from the
     // stimulus fields above. get_order() below reports what was asked
     // for; this reports what actually happened on the bus. Coverage
@@ -65,6 +104,35 @@ class axi_transaction extends uvm_sequence_item;
     // testbench's intentions rather than the DUT's experience.
     axi_order_e obs_order;
     bit         obs_order_valid;
+
+    //------------------------------------------------------------------
+    // Observed timing, in cycles, also filled in by the monitor.
+    //
+    // These are the DUT's experience, not the driver's knobs, and the
+    // difference is the whole reason they exist as separate fields from
+    // aw_delay / b_ready_delay above.
+    //
+    //   obs_valid_delay  cycles the request channel sat IDLE -- VALID
+    //                    low, nothing in flight -- immediately before
+    //                    this transaction's VALID rose. AW for a write,
+    //                    AR for a read.
+    //
+    //                    Note this is NOT aw_delay. aw_delay is counted
+    //                    from dispatch, an instant the monitor cannot
+    //                    see and the DUT does not experience. The gap
+    //                    between transactions is what a slave actually
+    //                    observes, so that is what is measured and what
+    //                    cg_valid_delay's bins are read against.
+    //
+    //   obs_backpressure cycles the response was held: BVALID (or
+    //                    RVALID) high with the master's READY low. Zero
+    //                    means the master was already ready. This is the
+    //                    quantity F28 is about and the one
+    //                    a_b_not_stalled exists to bound.
+    //------------------------------------------------------------------
+    int unsigned obs_valid_delay;
+    int unsigned obs_backpressure;
+    bit          obs_timing_valid;
 
     `uvm_object_utils_begin(axi_transaction)
         `uvm_field_enum(axi_kind_e,   kind,       UVM_ALL_ON)
