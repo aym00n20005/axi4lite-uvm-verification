@@ -30,3 +30,10 @@ transcript
 vsim.wlf
 ucdb/
 *.ucdb
+
+# Fetched toolchain: UVM class library, SymbiYosys. Reproduced by
+# 'make setup'; never edited here, so never committed.
+third_party/
+
+# Formal engine working directories
+formal/*_sby/

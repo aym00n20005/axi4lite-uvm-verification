@@ -1,29 +1,52 @@
 #=====================================================================
 # AXI4-Lite peripheral subsystem — front door
 #
-#   make test                 both smoke benches, Verilator + assertions
+#   make setup                one-time: slang, yosys, z3, UVM source
+#   make elab                 elaborate the UVM testbench locally (slang)
+#   make test                 smoke benches, Verilator + assertions
 #   make test TEST=reg        register slave only
 #   make test TEST=mem        memory slave only
 #   make test SIM=icarus      functional only; Icarus cannot do SVA
-#   make coverage             cover-property counts for both benches
+#   make coverage             cover-property counts
 #   make lint                 Verilator -Wall on the RTL
 #   make playground PLAY=x    bundle UVM (hello|rand_smoke|smoke|random|mem)
 #   make clean
 #
-# Deliberately thin: it wraps scripts/run_sim.sh rather than duplicating
-# the flow. Per docs/automation_plan.md, the toolkit proper (regression
-# runner, log parser) is a September build; before DVCon this file is the
-# only automation, and its job is to make `make test` the thing you type.
+# Deliberately thin: it wraps the scripts rather than duplicating the
+# flow. docs/automation_plan.md describes what each one is for.
 #
-# September's targets — `make regression`, `make test TEST=axi_smoke_test
-# SEED=42` — hang off this same front door once run_regression.py exists.
+# `make elab` is the important one and it is worth knowing why it is
+# first. UVM cannot be simulated locally, so the only way to run this
+# environment is to paste it into EDA Playground by hand — which makes a
+# typo cost minutes rather than seconds. slang elaborates the generated
+# bundle byte for byte in about a fifth of a second, so the browser is
+# needed only for the thing a browser is actually needed for.
 #=====================================================================
 
 SIM  ?= verilator
 TEST ?= all
 RTL  := rtl/axi4lite_reg_slave.sv rtl/axi4lite_mem_slave.sv
 
-.PHONY: test coverage lint clean help playground
+.PHONY: test coverage lint clean help playground setup elab
+
+#---------------------------------------------------------------------
+# One-time toolchain. Idempotent: brew and fetch_uvm.sh both no-op when
+# what they install is already there, so this is safe to re-run.
+#---------------------------------------------------------------------
+setup:
+	@command -v brew >/dev/null 2>&1 || { echo "setup: Homebrew required"; exit 1; }
+	@echo "  brew  svlang yosys z3"
+	@brew list svlang >/dev/null 2>&1 || brew install svlang
+	@brew list yosys  >/dev/null 2>&1 || brew install yosys
+	@brew list z3     >/dev/null 2>&1 || brew install z3
+	@echo "  pip   pyyaml jinja2"
+	@python3 -m pip install --quiet pyyaml jinja2
+	@./scripts/fetch_uvm.sh
+	@echo "setup: done"
+
+# Elaboration, not simulation. See the header, and scripts/elab.sh.
+elab:
+	@./scripts/elab.sh $(PLAY)
 
 test:
 	@./scripts/run_sim.sh $(SIM) $(TEST)

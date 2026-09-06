@@ -148,8 +148,21 @@ class axi_transaction extends uvm_sequence_item;
     // 4'b0000 deserves its own weight: it is a legal OKAY no-op on the
     // memory slave (spec section 6) and an SLVERR on the register slave (section 5).
     // Same pattern, opposite meaning -- worth hitting often.
+    //
+    // NOTE the placement of `soft`. It goes on the inner dist, INSIDE the
+    // implication -- not in front of the whole thing. IEEE 1800-2017's
+    // constraint grammar has two separate productions:
+    //
+    //   constraint_expression ::= [ soft ] expression_or_dist ;
+    //                           | expression -> constraint_set
+    //
+    // `soft` attaches to the first. Writing `soft (a) -> b dist {...}`
+    // therefore selects the first production, and the `->` inside it is
+    // the boolean implication OPERATOR, whose right operand `b dist {...}`
+    // is not an expression at all. Xcelium accepts that form; a conformant
+    // front end rejects it as ill-typed. See docs/bug_reports/BUG-010.md.
     constraint c_strb_dist {
-        soft (kind == AXI_WRITE) -> strb dist {
+        (kind == AXI_WRITE) -> soft strb dist {
             4'b1111              := 55,
             [4'b0001 : 4'b1110] :/ 35,
             4'b0000              := 10
@@ -163,8 +176,8 @@ class axi_transaction extends uvm_sequence_item;
     // a corner case deserves. 20% of register writes still leaves ~20
     // hits per 500 items, which is ample.
     constraint c_strb_reg {
-        soft (kind == AXI_WRITE && region == REGION_REG_IMPL) ->
-            strb dist { 4'b1111 := 80, [4'b0000 : 4'b1110] :/ 20 };
+        (kind == AXI_WRITE && region == REGION_REG_IMPL) ->
+            soft strb dist { 4'b1111 := 80, [4'b0000 : 4'b1110] :/ 20 };
     }
 
     constraint c_kind_dist {
