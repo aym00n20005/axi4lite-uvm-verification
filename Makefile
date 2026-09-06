@@ -3,9 +3,10 @@
 #
 #   make setup                one-time: slang, yosys, z3, UVM source
 #   make elab                 elaborate the UVM testbench locally (slang)
-#   make test                 smoke benches, Verilator + assertions
+#   make test                 all three smoke benches + assertions
 #   make test TEST=reg        register slave only
 #   make test TEST=mem        memory slave only
+#   make test TEST=sys        interconnect + both slaves (DECERR lives here)
 #   make test SIM=icarus      functional only; Icarus cannot do SVA
 #   make coverage             cover-property counts
 #   make lint                 Verilator -Wall on the RTL
@@ -31,6 +32,7 @@ TEST ?= all
 REG_PKG  := rtl/gen/axi4lite_reg_pkg.sv
 LINT_reg := $(REG_PKG) rtl/axi4lite_reg_slave.sv
 LINT_mem := rtl/axi4lite_mem_slave.sv
+LINT_ic  := rtl/axi4lite_interconnect.sv
 
 .PHONY: test coverage lint clean help playground setup elab regmap regcheck
 
@@ -66,6 +68,8 @@ lint:
 	@verilator --lint-only -Wall --timing $(LINT_reg)
 	@echo "  lint axi4lite_mem_slave"
 	@verilator --lint-only -Wall --timing $(LINT_mem)
+	@echo "  lint axi4lite_interconnect"
+	@verilator --lint-only -Wall --timing $(LINT_ic)
 	@echo "lint: clean"
 
 #---------------------------------------------------------------------
