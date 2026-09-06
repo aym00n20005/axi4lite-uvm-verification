@@ -65,9 +65,28 @@ COVERAGE=""
 # seed reaches sanity_rand_tb: run_regression.py launches the same
 # binary N times with +seed=N.
 PLUSARGS=()
+BUILD_ONLY=0
+NO_BUILD=0
 for a in "$@"; do
-    if [[ "$a" == "--coverage" ]]; then COVERAGE="--coverage-user"; else PLUSARGS+=("$a"); fi
+    case "$a" in
+      --coverage)   COVERAGE="--coverage-user" ;;
+      --build-only) BUILD_ONLY=1 ;;
+      --no-build)   NO_BUILD=1 ;;
+      *)            PLUSARGS+=("$a") ;;
+    esac
 done
+
+# --build-only / --no-build exist for the regression runner, and the
+# reason is a defect the runner found in this script on its first real
+# use: ten seeds of sanity_rand_tb launched in parallel all built into
+# the SAME $BUILD_ROOT/$TOP directory, each one starting with `rm -rf`,
+# and five of the ten died on a Makefile another job had just deleted.
+#
+# Compiling once and running the binary many times is also what a
+# regression should do anyway -- the binary does not depend on the seed,
+# and the seed is a plusarg. It took the local regression from 90s to
+# under 15s.
+
 
 case "$WHICH" in
   reg)  TARGETS=(reg) ;;
@@ -100,16 +119,25 @@ for T in "${TARGETS[@]}"; do
 
       verilator)
         BUILD="$BUILD_ROOT/$TOP"
-        rm -rf "$BUILD"
-        # Verilator creates only the final --Mdir level, so after a
-        # `make clean` has removed BUILD_ROOT entirely it cannot create
-        # BUILD_ROOT/$TOP. Make the parent ourselves.
-        mkdir -p "$BUILD"
-        verilator --binary --assert --timing -Wno-fatal -j 4 \
-            ${COVERAGE:+$COVERAGE} \
-            --top-module "$TOP" \
-            --Mdir "$BUILD" -o "$TOP" \
-            "${RTL[@]}" "$IF" "$BIND_REG" "$BIND_MEM" "$BIND_SYS" "$TB"
+        if [[ $NO_BUILD -eq 0 ]]; then
+            rm -rf "$BUILD"
+            # Verilator creates only the final --Mdir level, so after a
+            # `make clean` has removed BUILD_ROOT entirely it cannot create
+            # BUILD_ROOT/$TOP. Make the parent ourselves.
+            mkdir -p "$BUILD"
+            verilator --binary --assert --timing -Wno-fatal -j 4 \
+                ${COVERAGE:+$COVERAGE} \
+                --top-module "$TOP" \
+                --Mdir "$BUILD" -o "$TOP" \
+                "${RTL[@]}" "$IF" "$BIND_REG" "$BIND_MEM" "$BIND_SYS" "$TB"
+        elif [[ ! -x "$BUILD/$TOP" ]]; then
+            echo "run_sim: --no-build but $BUILD/$TOP does not exist" >&2
+            exit 3
+        fi
+        if [[ $BUILD_ONLY -eq 1 ]]; then
+            echo "built: $BUILD/$TOP"
+            continue
+        fi
         ( cd "$ROOT/sim" && "$BUILD/$TOP" "${PLUSARGS[@]+"${PLUSARGS[@]}"}" ) || FAILED=1
         # Verilator drops coverage.dat in the run directory. Both benches
         # run there, so keep them apart or the second overwrites the first.

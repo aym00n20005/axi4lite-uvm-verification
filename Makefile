@@ -186,6 +186,14 @@ PLAY_rand_DESIGN := $(PLAY_SYS_DESIGN)
 PLAY_rand        := $(PLAY_SYS_TB)
 PLAY_rand_DEFINE := `define AXI_TEST "axi_multiseed_test"
 
+# The three system bundles are byte-identical apart from the AXI_TEST
+# line, so all three runs are ONE paste and two one-line edits. Saying so
+# in the generated file is worth more than saying it in a README nobody
+# has open at the time.
+PLAY_sys_NOTE  := yes
+PLAY_ral_NOTE  := yes
+PLAY_rand_NOTE := yes
+
 playground:
 	@mkdir -p sim
 	@srcs="$(PLAY_$(PLAY))"; \
@@ -203,7 +211,27 @@ playground:
 	   echo ""; \
 	   if ! grep -q '^import uvm_pkg' $$srcs; then \
 	     echo '`include "uvm_macros.svh"'; echo "import uvm_pkg::*;"; echo ""; fi; \
-	   if [ -n '$(PLAY_$(PLAY)_DEFINE)' ]; then echo '$(PLAY_$(PLAY)_DEFINE)'; echo ""; fi; \
+	   if [ -n '$(PLAY_$(PLAY)_NOTE)' ]; then \
+	     echo "//===================================================================="; \
+	     echo "//  THREE RUNS, ONE PASTE."; \
+	     echo "//"; \
+	     echo "//  The sys, ral and rand bundles are identical except for the"; \
+	     echo "//  AXI_TEST line below. Paste both panes once, run, then edit that"; \
+	     echo "//  ONE line and run again:"; \
+	     echo "//"; \
+	     echo '//      "axi_regression_test"   all 15 directed sequences, one run'; \
+	     echo '//      "axi_ral_test"          hw_reset + bit_bash + policy checks'; \
+	     echo '//      "axi_multiseed_test"    8 seeds of random traffic'; \
+	     echo "//"; \
+	     echo "//  AXI_SEED changes the randomisation. Playground's command line is"; \
+	     echo "//  fixed -- no +SVSEED -- so a define is the only way in, and without"; \
+	     echo "//  it Xcelium reports 'SVSEED default: 1' and every run is identical."; \
+	     echo "//"; \
+	     echo "//  Save each log, then:  make import-log LOG=<file> TEST=<name>"; \
+	     echo "//===================================================================="; \
+	     echo ""; fi; \
+	   if [ -n '$(PLAY_$(PLAY)_DEFINE)' ]; then echo '$(PLAY_$(PLAY)_DEFINE)'; fi; \
+	   echo '`define AXI_SEED $(SEED)'; echo ""; \
 	   for f in $$srcs; do \
 	     echo "//================ $$f ================"; cat $$f; echo ""; done; \
 	 } > $$out; \

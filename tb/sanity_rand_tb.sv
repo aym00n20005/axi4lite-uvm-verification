@@ -165,8 +165,8 @@ module sanity_rand_tb;
     // mapped regions are 5 KB out of 4 GB. Same reasoning, and roughly
     // the same weights, as axi_transaction's c_region_dist.
     function automatic logic [31:0] pick_addr();
-        int      region;
-        int      misaligned;
+        int          region;
+        bit          misaligned;
         logic [31:0] a;
         region     = $urandom_range(0, 99);
         misaligned = ($urandom_range(0, 99) < 8);
@@ -175,7 +175,7 @@ module sanity_rand_tb;
         else if (region < 88) a = 32'h0000_1000 + ($urandom_range(0, 255) << 2);   // memory
         else if (region < 94) a = 32'h0000_1400 + ($urandom_range(0, 383) << 2);   // the gap
         else                  a = 32'h0000_2000 + ($urandom_range(0, 1023) << 2);  // unmapped high
-        if (misaligned) a[1:0] = $urandom_range(1, 3);
+        if (misaligned) a[1:0] = 2'($urandom_range(1, 3));
         return a;
     endfunction
 
@@ -299,8 +299,9 @@ module sanity_rand_tb;
 
         for (int i = 0; i < n_txn; i++) begin
             w_addr[i] = pick_addr();
-            w_data[i] = {$urandom(), 1'b0} >> 1;
-            w_strb[i] = ($urandom_range(0, 99) < 55) ? 4'b1111 : $urandom_range(0, 15);
+            w_data[i] = $urandom();
+            w_strb[i] = ($urandom_range(0, 99) < 55) ? 4'b1111
+                                                     : 4'($urandom_range(0, 15));
             w_awd [i] = pick_delay();
             w_wd  [i] = pick_delay();
             w_bd  [i] = pick_delay();

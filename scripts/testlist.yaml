@@ -1,0 +1,108 @@
+#=====================================================================
+# testlist.yaml -- what `make regression` runs, and what each test is for.
+#
+# docs/automation_plan.md T1. Read by scripts/run_regression.py, and by
+# scripts/vplan_trace.py for the feature column -- so a test's claim
+# about which features it covers is written once, here, rather than in a
+# comment in one file and a table in another.
+#
+# TWO KINDS OF ENTRY, AND THE DIFFERENCE IS THE WHOLE SHAPE OF THIS
+# PROJECT'S FLOW.
+#
+#   runner: local     Verilator or Icarus, launched by the regression
+#                     runner, many seeds, unattended.
+#
+#   runner: imported  UVM. Cannot be launched from here: Icarus and
+#                     Verilator have no UVM support, so the only
+#                     simulator that runs the environment is Xcelium on
+#                     EDA Playground, reached by pasting into a browser.
+#                     The regression runner reads its LOG instead --
+#                     dropped into sim/logs/ by `make import-log` -- and
+#                     treats it exactly like a run it launched itself.
+#
+# That second kind is not a workaround, it is the honest description of
+# a flow with a manual step in it. Everything after the log is
+# automated; the log is where a person is required, and the file says so
+# rather than pretending otherwise.
+#=====================================================================
+
+defaults:
+  timeout: 600            # seconds
+  n: 400                  # transactions, for the seeded random bench
+
+tests:
+
+  #-------------------------------------------------------------------
+  # Local, launched here. These are the ones a regression actually runs.
+  #-------------------------------------------------------------------
+  - name:     sanity_tb
+    runner:   local
+    target:   reg
+    seeds:    [0]                 # directed; the seed is not used
+    expect:   pass
+    features: [F01, F02, F04, F05, F06, F07, F08, F09, F10, F11, F12,
+               F13, F16, F19, F20, F21, F22, F23, F25, F26]
+    why:      "Register slave, directed. Every register semantic the spec states."
+
+  - name:     sanity_mem_tb
+    runner:   local
+    target:   mem
+    seeds:    [0]
+    expect:   pass
+    features: [F01, F02, F04, F05, F06, F07, F14, F15, F20]
+    why:      "Memory slave, directed. WSTRB masking and the no-clear-on-reset rule."
+
+  - name:     sanity_sys_tb
+    runner:   local
+    target:   sys
+    seeds:    [0]
+    expect:   pass
+    features: [F03, F15, F16, F17, F18, F19, F20, F21]
+    why:      "Interconnect + both slaves. The only local bench that can reach DECERR."
+
+  - name:     sanity_rand_tb
+    runner:   local
+    target:   rand
+    seeds:    [1, 2, 3, 5, 7, 11, 13, 42, 99, 1234]
+    expect:   pass
+    features: [F01, F02, F03, F04, F05, F06, F07, F08, F14, F15, F17,
+               F18, F20, F21, F28, F29]
+    why: >-
+      Seeded constrained-random, ten seeds. Owns the four cover points no
+      directed bench can reach -- c_b2b_write, c_b2b_read and both
+      backpressure covers -- because it keeps the next transaction's VALID
+      asserted while the current one is still completing.
+
+  #-------------------------------------------------------------------
+  # UVM. Run by hand on EDA Playground; imported from sim/logs/.
+  #-------------------------------------------------------------------
+  - name:     axi_regression_test
+    runner:   imported
+    log:      sim/logs/sys.log
+    bundle:   sys
+    expect:   pass
+    features: [F01, F02, F03, F08, F09, F14, F15, F16, F17, F18, F19,
+               F20, F21, F22, F23, F24, F25, F26, F27, F28, F29]
+    why: >-
+      All fifteen directed sequences in one simulation, against the
+      interconnect and both slaves, with the spec-derived scoreboard and
+      the functional coverage model live.
+
+  - name:     axi_ral_test
+    runner:   imported
+    log:      sim/logs/ral.log
+    bundle:   ral
+    expect:   pass
+    features: [F10, F11, F12, F13]
+    why: >-
+      uvm_reg_hw_reset_seq + uvm_reg_bit_bash_seq against the generated
+      RAL model, plus explicit access-policy checks. bit_bash is what
+      catches BUG-004.
+
+  - name:     axi_multiseed_test
+    runner:   imported
+    log:      sim/logs/rand.log
+    bundle:   rand
+    expect:   pass
+    features: [F01, F02, F03, F14, F28, F29]
+    why:      "Eight seeds of constrained-random traffic in one simulation."
