@@ -13,6 +13,7 @@
 #   make coverage             cover properties + functional, with a trend
 #   make vplan                feature -> test -> result matrix
 #   make import-log LOG=..    bring a UVM log in from EDA Playground
+#   make formal               bounded model check (Yosys + z3)
 #   make all                  everything that needs no person
 #   make lint                 Verilator -Wall on the RTL
 #   make playground PLAY=x    bundle UVM for EDA Playground
@@ -43,7 +44,8 @@ LINT_mem := rtl/axi4lite_mem_slave.sv
 LINT_ic  := rtl/axi4lite_interconnect.sv
 
 .PHONY: test coverage cover-quick lint clean help playground setup elab \
-        regmap regcheck regression triage vplan test-scripts import-log all docs
+        regmap regcheck regression triage vplan test-scripts import-log \
+        formal all docs
 
 #---------------------------------------------------------------------
 # One-time toolchain. Idempotent: brew and fetch_uvm.sh both no-op when
@@ -92,6 +94,12 @@ cover-quick:
 vplan:
 	@python3 scripts/vplan_trace.py
 
+# Bounded model check. The only flow that can decide spec section 5's
+# same-cycle rules -- see docs/formal_notes.md.
+DEPTH ?= 25
+formal:
+	@./formal/run_formal.sh $(DEPTH)
+
 # T2's test suite. The parser everything else is built on.
 test-scripts:
 	@python3 scripts/test_parse_log.py
@@ -119,7 +127,7 @@ import-log:
 #---------------------------------------------------------------------
 # Everything that can run without a person, in dependency order.
 #---------------------------------------------------------------------
-all: regcheck elab lint test-scripts regression triage coverage vplan
+all: regcheck elab lint test-scripts regression triage coverage vplan formal
 	@echo ""
 	@echo "  all: done. docs/traceability.md is the one to read."
 

@@ -73,15 +73,74 @@ module axi4lite_reg_slave #(
     input  logic                    RREADY
 );
 
-    // Indices, offsets, widths, resets and masks -- generated from
-    // scripts/regmap.yaml. R_CTRL..R_ID, CONFIG_W, CONFIG_RESET,
-    // ID_RESET, REG_IMPL_MSB and the rest all arrive here.
-    import axi4lite_reg_pkg::*;
-
     localparam int STRB_WIDTH = DATA_WIDTH / 8;
 
     localparam logic [1:0] RESP_OKAY   = 2'b00;
     localparam logic [1:0] RESP_SLVERR = 2'b10;
+
+    //==================================================================
+    // The generated register map. Every constant this module takes from
+    // scripts/regmap.yaml, named once, here.
+    //
+    // WHY NOT `import axi4lite_reg_pkg::*;`  -- measured, not stylistic:
+    //
+    //   inside the module   Yosys rejects it outright:
+    //                       "ERROR: syntax error, unexpected TOK_IMPORT"
+    //   at $unit scope      Yosys accepts it, Verilator warns
+    //                       (IMPORTSTAR, "may pollute global namespace")
+    //                       and it is a real hazard in the EDA Playground
+    //                       bundle, where the whole design shares one
+    //                       compilation unit.
+    //
+    // Neither form is portable across the four tools this project uses,
+    // and the alternative -- preprocessing the source for the formal
+    // flow -- is worse than either: it would mean the bounded model
+    // check proves properties about a DERIVED copy of the design rather
+    // than about the design.
+    //
+    // Explicit scoped references cost this block and nothing else, and
+    // they earn it back: the list below IS the interface between the
+    // RTL and the register map, and it is now visible in one place
+    // instead of scattered through 300 lines. See docs/formal_notes.md.
+    //==================================================================
+    localparam int REG_INDEX_W   = axi4lite_reg_pkg::REG_INDEX_W;
+    localparam int REG_IMPL_MSB  = axi4lite_reg_pkg::REG_IMPL_MSB;
+    localparam int REG_IMPL_LSB  = axi4lite_reg_pkg::REG_IMPL_LSB;
+    localparam int REG_INDEX_MSB = axi4lite_reg_pkg::REG_INDEX_MSB;
+    localparam int REG_INDEX_LSB = axi4lite_reg_pkg::REG_INDEX_LSB;
+
+    localparam logic [REG_INDEX_W-1:0] R_CTRL       = axi4lite_reg_pkg::R_CTRL;
+    localparam logic [REG_INDEX_W-1:0] R_STATUS     = axi4lite_reg_pkg::R_STATUS;
+    localparam logic [REG_INDEX_W-1:0] R_CONFIG     = axi4lite_reg_pkg::R_CONFIG;
+    localparam logic [REG_INDEX_W-1:0] R_INT_ENABLE = axi4lite_reg_pkg::R_INT_ENABLE;
+    localparam logic [REG_INDEX_W-1:0] R_INT_STATUS = axi4lite_reg_pkg::R_INT_STATUS;
+    localparam logic [REG_INDEX_W-1:0] R_SCRATCH    = axi4lite_reg_pkg::R_SCRATCH;
+    localparam logic [REG_INDEX_W-1:0] R_COUNTER    = axi4lite_reg_pkg::R_COUNTER;
+    localparam logic [REG_INDEX_W-1:0] R_ID         = axi4lite_reg_pkg::R_ID;
+
+    localparam int CTRL_W       = axi4lite_reg_pkg::CTRL_W;
+    localparam int STATUS_W     = axi4lite_reg_pkg::STATUS_W;
+    localparam int CONFIG_W     = axi4lite_reg_pkg::CONFIG_W;
+    localparam int INT_ENABLE_W = axi4lite_reg_pkg::INT_ENABLE_W;
+    localparam int INT_STATUS_W = axi4lite_reg_pkg::INT_STATUS_W;
+    localparam int SCRATCH_W    = axi4lite_reg_pkg::SCRATCH_W;
+    localparam int COUNTER_W    = axi4lite_reg_pkg::COUNTER_W;
+
+    localparam logic [DATA_WIDTH-1:0] CONFIG_RESET     = axi4lite_reg_pkg::CONFIG_RESET;
+    localparam logic [DATA_WIDTH-1:0] INT_ENABLE_RESET = axi4lite_reg_pkg::INT_ENABLE_RESET;
+    localparam logic [DATA_WIDTH-1:0] INT_STATUS_RESET = axi4lite_reg_pkg::INT_STATUS_RESET;
+    localparam logic [DATA_WIDTH-1:0] SCRATCH_RESET    = axi4lite_reg_pkg::SCRATCH_RESET;
+    localparam logic [DATA_WIDTH-1:0] ID_RESET         = axi4lite_reg_pkg::ID_RESET;
+
+    localparam logic [DATA_WIDTH-1:0] CTRL_ENABLE_RESET   = axi4lite_reg_pkg::CTRL_ENABLE_RESET;
+    localparam logic [DATA_WIDTH-1:0] COUNTER_COUNT_RESET = axi4lite_reg_pkg::COUNTER_COUNT_RESET;
+
+    localparam int CTRL_ENABLE_LSB          = axi4lite_reg_pkg::CTRL_ENABLE_LSB;
+    localparam int CTRL_RESET_STATS_LSB     = axi4lite_reg_pkg::CTRL_RESET_STATS_LSB;
+    localparam int INT_STATUS_UNIMPL_LSB    = axi4lite_reg_pkg::INT_STATUS_UNIMPL_LSB;
+    localparam int INT_STATUS_MISALIGN_LSB  = axi4lite_reg_pkg::INT_STATUS_MISALIGN_LSB;
+    localparam int INT_STATUS_STROBE_LSB    = axi4lite_reg_pkg::INT_STATUS_STROBE_LSB;
+    localparam int INT_STATUS_OVERFLOW_LSB  = axi4lite_reg_pkg::INT_STATUS_OVERFLOW_LSB;
 
     //==================================================================
     // State
@@ -398,5 +457,21 @@ module axi4lite_reg_slave #(
                         wr_addr[ADDR_WIDTH-1:REG_IMPL_MSB+1],
                         ARADDR [ADDR_WIDTH-1:REG_IMPL_MSB+1],
                         1'b0};
+
+    //==================================================================
+    // Formal properties.
+    //
+    // Compiled ONLY under `ifdef FORMAL, which no simulation flow in
+    // this project defines -- Verilator, Icarus, slang and Xcelium all
+    // see an empty block. `make formal` is the only thing that sets it.
+    //
+    // Inside the module rather than in a bound wrapper because Yosys's
+    // frontend resolves neither hierarchical references nor `bind`, so
+    // there is nowhere else for a property about internal state to
+    // live. See formal/axi4lite_reg_slave_formal.svh.
+    //==================================================================
+`ifdef FORMAL
+  `include "axi4lite_reg_slave_formal.svh"
+`endif
 
 endmodule : axi4lite_reg_slave

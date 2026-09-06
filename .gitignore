@@ -36,4 +36,5 @@ ucdb/
 third_party/
 
 # Formal engine working directories
+formal/build/
 formal/*_sby/
