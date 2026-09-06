@@ -1,6 +1,6 @@
 # Coverage — measured
 
-**GENERATED** by `scripts/coverage_report.py` at commit `d5ade6e`.
+**GENERATED** by `scripts/coverage_report.py` at commit `7a357b6`.
 Do not edit — run `make coverage`. The *justifications* for anything
 uncovered live in [coverage_status.md](coverage_status.md), which is written
 by hand, because verification plan §5 requires a written reason and a
@@ -104,38 +104,38 @@ structural fact. This table says *how long*; `coverage_status.md` says *which*.
 
 | Cover point | Instance | Consecutive runs at zero |
 |---|---|---|
-| `c_aw_before_w` | `sanity_rand_tb.u_*.u_chk` | 1 |
-| `c_aw_before_w` | `sanity_sys_tb.u_*.u_chk` | 1 |
-| `c_b2b_read` | `sanity_mem_tb.dut.u_chk` | 1 |
-| `c_b2b_read` | `sanity_rand_tb.u_*.u_chk` | 1 |
-| `c_b2b_read` | `sanity_sys_tb.u_*.u_chk` | 1 |
-| `c_b2b_read` | `sanity_sys_tb.u_ic.u_chk_m` | 1 |
-| `c_b2b_read` | `sanity_tb.dut.u_chk` | 1 |
-| `c_b2b_write` | `sanity_mem_tb.dut.u_chk` | 1 |
-| `c_b2b_write` | `sanity_rand_tb.u_*.u_chk` | 1 |
-| `c_b2b_write` | `sanity_sys_tb.u_*.u_chk` | 1 |
-| `c_b2b_write` | `sanity_sys_tb.u_ic.u_chk_m` | 1 |
-| `c_b2b_write` | `sanity_tb.dut.u_chk` | 1 |
-| `c_misaligned_aw` | `sanity_sys_tb.u_*.u_chk` | 1 |
-| `c_misaligned_aw` | `sanity_sys_tb.u_ic.u_chk_m` | 1 |
-| `c_read_backpressure` | `sanity_mem_tb.dut.u_chk` | 1 |
-| `c_read_backpressure` | `sanity_rand_tb.u_*.u_chk` | 1 |
-| `c_read_backpressure` | `sanity_sys_tb.u_*.u_chk` | 1 |
-| `c_read_backpressure` | `sanity_sys_tb.u_ic.u_chk_m` | 1 |
-| `c_read_backpressure` | `sanity_tb.dut.u_chk` | 1 |
-| `c_resp_decerr` | `sanity_mem_tb.dut.u_chk` | 1 |
-| `c_resp_decerr` | `sanity_rand_tb.u_*.u_chk` | 1 |
-| `c_resp_decerr` | `sanity_sys_tb.u_*.u_chk` | 1 |
-| `c_resp_decerr` | `sanity_tb.dut.u_chk` | 1 |
-| `c_w_before_aw` | `sanity_rand_tb.u_*.u_chk` | 1 |
-| `c_w_before_aw` | `sanity_sys_tb.u_*.u_chk` | 1 |
-| `c_write_backpressure` | `sanity_mem_tb.dut.u_chk` | 1 |
-| `c_write_backpressure` | `sanity_rand_tb.u_*.u_chk` | 1 |
-| `c_write_backpressure` | `sanity_sys_tb.u_*.u_chk` | 1 |
-| `c_write_backpressure` | `sanity_sys_tb.u_ic.u_chk_m` | 1 |
-| `c_write_backpressure` | `sanity_tb.dut.u_chk` | 1 |
-| `c_zero_strobe` | `sanity_sys_tb.u_*.u_chk` | 1 |
-| `c_zero_strobe` | `sanity_sys_tb.u_ic.u_chk_m` | 1 |
+| `c_aw_before_w` | `sanity_rand_tb.u_*.u_chk` | 2 |
+| `c_aw_before_w` | `sanity_sys_tb.u_*.u_chk` | 2 |
+| `c_b2b_read` | `sanity_mem_tb.dut.u_chk` | 2 |
+| `c_b2b_read` | `sanity_rand_tb.u_*.u_chk` | 2 |
+| `c_b2b_read` | `sanity_sys_tb.u_*.u_chk` | 2 |
+| `c_b2b_read` | `sanity_sys_tb.u_ic.u_chk_m` | 2 |
+| `c_b2b_read` | `sanity_tb.dut.u_chk` | 2 |
+| `c_b2b_write` | `sanity_mem_tb.dut.u_chk` | 2 |
+| `c_b2b_write` | `sanity_rand_tb.u_*.u_chk` | 2 |
+| `c_b2b_write` | `sanity_sys_tb.u_*.u_chk` | 2 |
+| `c_b2b_write` | `sanity_sys_tb.u_ic.u_chk_m` | 2 |
+| `c_b2b_write` | `sanity_tb.dut.u_chk` | 2 |
+| `c_misaligned_aw` | `sanity_sys_tb.u_*.u_chk` | 2 |
+| `c_misaligned_aw` | `sanity_sys_tb.u_ic.u_chk_m` | 2 |
+| `c_read_backpressure` | `sanity_mem_tb.dut.u_chk` | 2 |
+| `c_read_backpressure` | `sanity_rand_tb.u_*.u_chk` | 2 |
+| `c_read_backpressure` | `sanity_sys_tb.u_*.u_chk` | 2 |
+| `c_read_backpressure` | `sanity_sys_tb.u_ic.u_chk_m` | 2 |
+| `c_read_backpressure` | `sanity_tb.dut.u_chk` | 2 |
+| `c_resp_decerr` | `sanity_mem_tb.dut.u_chk` | 2 |
+| `c_resp_decerr` | `sanity_rand_tb.u_*.u_chk` | 2 |
+| `c_resp_decerr` | `sanity_sys_tb.u_*.u_chk` | 2 |
+| `c_resp_decerr` | `sanity_tb.dut.u_chk` | 2 |
+| `c_w_before_aw` | `sanity_rand_tb.u_*.u_chk` | 2 |
+| `c_w_before_aw` | `sanity_sys_tb.u_*.u_chk` | 2 |
+| `c_write_backpressure` | `sanity_mem_tb.dut.u_chk` | 2 |
+| `c_write_backpressure` | `sanity_rand_tb.u_*.u_chk` | 2 |
+| `c_write_backpressure` | `sanity_sys_tb.u_*.u_chk` | 2 |
+| `c_write_backpressure` | `sanity_sys_tb.u_ic.u_chk_m` | 2 |
+| `c_write_backpressure` | `sanity_tb.dut.u_chk` | 2 |
+| `c_zero_strobe` | `sanity_sys_tb.u_*.u_chk` | 2 |
+| `c_zero_strobe` | `sanity_sys_tb.u_ic.u_chk_m` | 2 |
 
 ## Functional coverage — UVM, imported from EDA Playground
 
@@ -149,5 +149,10 @@ make coverage
 
 ## Trend
 
-1 measurement(s) recorded in `results/coverage_history.json`.
+2 measurement(s) recorded in `results/coverage_history.json`.
+
+| Commit | Date | Cover points non-zero |
+|---|---|---|
+| `d5ade6e` | 2026-09-06T23:07 | 52/84 |
+| `7a357b6` | 2026-09-07T04:08 | 52/84 |
 

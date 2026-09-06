@@ -35,7 +35,7 @@ and "the same treatment extends to the other three". It did.
 ## Cover properties — closed, locally
 
 Fourteen of fourteen are non-zero. Five of them read 0 in *every run this project
-made* before 6 September:
+made* until the interconnect and the seeded random bench existed:
 
 | Cover point | Before | Now (master port) | What closed it |
 |---|---|---|---|

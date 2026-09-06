@@ -268,7 +268,7 @@ Then the question that gets you a real conversation:
 - **Don't learn Perl properly.** Read-only fluency, a weekend at most, and only once the Python is real.
 - **Don't ship the AI layer without the measurement.** Unmeasured, it's the weakest thing in your repo. Measured, it's among the strongest.
 - **Don't split this into a second repository.** The automation's value comes entirely from what it automates.
-- **Don't list this on a resume before mid-October.** See §8.
+- **Don't list this until it runs.** See §8 — the gate is passed.
 
 ---
 
@@ -278,13 +278,16 @@ Two conditions govern when and how this appears outside the repo.
 
 ### Condition 1 — don't list it until it runs
 
-Right now this is a plan document, and a plan on a resume is a liability the moment someone opens the repo. The gate is **mid-October**, when T1, T2 and T4 exist and run:
+A plan on a resume is a liability the moment someone opens the repo. The gate was: T1, T2 and T4 exist and run.
 
 - T1 — `make regression` launches parallel multi-seed runs and writes `results.json`
 - T2 — `parse_log.py` produces normalised failure signatures
 - T4 — `regmap_gen.py` emits the register bank, the RAL model and `register_map.md` from `regmap.yaml`
 
-Until all three run, the toolkit is not a resume line. It is fine for it to be visible in the repo as a plan before then — plans in `docs/` read as intent; plans on a resume read as claims.
+**All three run, and so do T3, T5, T6 and A1.** The toolkit is a resume line.
+
+The rule that produced the gate is worth keeping for whatever comes next: plans
+in `docs/` read as intent; plans on a resume read as claims.
 
 ### Condition 2 — don't present the two projects as unrelated
 

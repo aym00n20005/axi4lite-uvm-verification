@@ -26,8 +26,8 @@ browser.
 
 ## slang — the elaboration gate
 
-**Added 6 September.** slang cannot simulate. It elaborates, which turns out to
-be most of the value: UVM runs only on EDA Playground, by hand, so every typo
+slang cannot simulate. It **elaborates**, which turns out to be most of the
+value: UVM runs only on EDA Playground, by hand, so every typo
 used to cost a browser round trip measured in minutes. slang elaborates the
 generated bundle — byte for byte, the same file that gets pasted — in about a
 fifth of a second.
@@ -57,7 +57,7 @@ selects the wrong production of IEEE 1800-2017's constraint grammar. Xcelium
 accepts it; every number this project had published came through it. See
 [BUG-010](bug_reports/BUG-010.md).
 
-**The general lesson is worth more than the bug.** Until 6 September everything
+**The general lesson is worth more than the bug.** Until an elaboration gate existed, everything
 here had been validated by exactly one simulator, which means it had been
 validated against that simulator's *extensions* as much as against the language.
 A second conformant front end is cheap insurance, and 0.2 seconds is not a
@@ -71,8 +71,7 @@ its declaration in the interconnect, and the same in a sequence.
 
 ## Yosys — the formal frontend, and its limits
 
-**Added 6 September.** Yosys 0.68 with `yosys-smtbmc` and Z3 5.1.0, all from
-Homebrew. SymbiYosys is *not* installed: it drives `yosys-smtbmc`, which ships
+Yosys 0.68 with `yosys-smtbmc` and Z3 5.1.0, all from Homebrew. SymbiYosys is *not* installed: it drives `yosys-smtbmc`, which ships
 with Yosys, so calling that directly removes a source-build dependency.
 
 **Yosys's open-source frontend supports no concurrent SVA at all.** Measured, one
@@ -164,8 +163,18 @@ line + toggle + user coverage; `--coverage-user` and `--coverage-line` each
 build fine on their own, so the crash is in the toggle path. Cover properties
 are what matter here, so `run_sim.sh --coverage` passes `--coverage-user`.
 
-Code coverage (line/branch/toggle) therefore comes from a commercial simulator
-on EDA Playground, not locally. That is a November milestone anyway.
+Code coverage (line/branch/toggle) therefore comes from a commercial simulator,
+and **it is the one thing in this project that was not done**.
+
+Stated plainly rather than left as a milestone that quietly lapsed: Verilator's
+`--coverage-line` builds, but line coverage of the RTL is a weak metric here --
+the design is 900 lines and every line is exercised by the directed benches. The
+metric worth having is toggle and branch coverage from Xcelium, and Xcelium is
+only reachable through EDA Playground, whose command line is fixed and cannot
+pass `-coverage all`. The same fixed command line that makes the functional
+covergroups report a silent `0.00%`.
+
+So: not available, for the same measured reason, and not claimed.
 
 ## Cover-property status
 
@@ -194,7 +203,7 @@ of what the interconnect does, and each is written down here and in
 ### The five that used to be permanently zero
 
 `c_b2b_write`, `c_b2b_read`, `c_write_backpressure`, `c_read_backpressure` and
-`c_resp_decerr` read 0 in every run this project made until 6 September. Four of
+`c_resp_decerr` read 0 in every run this project made before the seeded random bench existed. Four of
 them needed a driver that keeps the *next* transaction's VALID asserted while the
 current one is still completing, which `tb/sanity_rand_tb.sv` does and no
 directed bench can. The fifth needed an interconnect to exist.
@@ -274,7 +283,7 @@ Two consequences worth carrying:
 Local `make test` is unaffected and stays the RTL regression: Icarus and
 Verilator have no UVM support and never will for this project's purposes.
 
-**Since 6 September the seed is no longer fixed.** Playground's command line
+**The seed is no longer fixed.** Playground's command line
 cannot pass `+SVSEED`, so it arrives as a define written into the generated
 bundle by `make playground PLAY=x SEED=n`, and the sequence seeds its own
 process with it. `axi_multiseed_test` runs eight seeds inside one simulation,

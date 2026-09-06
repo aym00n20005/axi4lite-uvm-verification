@@ -40,7 +40,7 @@ so `ADDR[9:2]` indexes the region directly.
 **Standalone, before the interconnect exists, an access to `0x1400` will alias
 onto word 0 here.** That is not a defect in this module — routing is the
 interconnect's responsibility, and it is exactly the responsibility BUG-005
-injects a fault into. Worth knowing before the September bring-up, so the
+injects a fault into. Worth knowing before UVM bring-up, so the
 aliasing is recognised as expected rather than chased as a bug.
 
 ## 3. `WSTRB` — the same signal, the opposite policy
@@ -97,4 +97,5 @@ the zero-strobe case is the one that shows why it matters.
 
 Spec §9 lists BUG-003 as caught by the **scoreboard**, not by a directed test.
 That remains true and is the harder requirement — this bench catching it early
-does not discharge it. The scoreboard must still catch it in September.
+does not discharge it. The scoreboard does catch it -- BUG-003 is
+discharged, see docs/bug_reports/BUG-003.md.
