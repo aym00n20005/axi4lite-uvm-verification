@@ -19,6 +19,19 @@
 //
 //   3. Errors are a strict priority cascade, so exactly one error is
 //      ever true and exactly one INT_STATUS bit is ever set (section 4).
+//
+// WHAT COMES FROM axi4lite_reg_pkg AND WHAT DOES NOT
+//
+// Every name, offset, width, reset value and implemented-bit mask below
+// is imported from rtl/gen/axi4lite_reg_pkg.sv, which is generated from
+// scripts/regmap.yaml along with the RAL model and docs/register_map.md.
+// Narrowing a field in the YAML narrows the flop here.
+//
+// The BEHAVIOUR is not generated and is not meant to be. W1C
+// set-beats-clear, CTRL[1]'s self-clearing pulse, STATUS.error's
+// transparency rule and COUNTER's reset-over-increment priority are one
+// paragraph of the spec each, and the always_ff blocks below cite those
+// paragraphs directly. A template would be a worse expression of them.
 //======================================================================
 
 `timescale 1ns/1ps
@@ -60,22 +73,15 @@ module axi4lite_reg_slave #(
     input  logic                    RREADY
 );
 
+    // Indices, offsets, widths, resets and masks -- generated from
+    // scripts/regmap.yaml. R_CTRL..R_ID, CONFIG_W, CONFIG_RESET,
+    // ID_RESET, REG_IMPL_MSB and the rest all arrive here.
+    import axi4lite_reg_pkg::*;
+
     localparam int STRB_WIDTH = DATA_WIDTH / 8;
 
     localparam logic [1:0] RESP_OKAY   = 2'b00;
     localparam logic [1:0] RESP_SLVERR = 2'b10;
-
-    // Register indices -- ADDR[4:2], spec section 5
-    localparam logic [2:0] R_CTRL       = 3'd0;   // 0x00
-    localparam logic [2:0] R_STATUS     = 3'd1;   // 0x04
-    localparam logic [2:0] R_CONFIG     = 3'd2;   // 0x08
-    localparam logic [2:0] R_INT_ENABLE = 3'd3;   // 0x0C
-    localparam logic [2:0] R_INT_STATUS = 3'd4;   // 0x10
-    localparam logic [2:0] R_SCRATCH    = 3'd5;   // 0x14
-    localparam logic [2:0] R_COUNTER    = 3'd6;   // 0x18
-    localparam logic [2:0] R_ID         = 3'd7;   // 0x1C
-
-    localparam logic [31:0] ID_VALUE = 32'hDEAD_BEEF;
 
     //==================================================================
     // State
@@ -98,13 +104,13 @@ module axi4lite_reg_slave #(
 
     // Register bank -- stored at implemented width only, so reserved bits
     // physically cannot retain data (spec section 5, feature F13).
-    logic                    ctrl_enable;    // CTRL[0]
-    logic [7:0]              config_q;       // CONFIG[7:0]
-    logic [3:0]              int_enable_q;   // INT_ENABLE[3:0]
-    logic [3:0]              int_status_q;   // INT_STATUS[3:0]
-    logic [31:0]             scratch_q;      // SCRATCH[31:0]
-    logic [15:0]             counter_q;      // COUNTER[15:0]
-    logic                    status_error;   // STATUS[1]
+    logic                            ctrl_enable;    // CTRL.enable
+    logic [CONFIG_W-1:0]             config_q;
+    logic [INT_ENABLE_W-1:0]         int_enable_q;
+    logic [INT_STATUS_W-1:0]         int_status_q;
+    logic [SCRATCH_W-1:0]            scratch_q;
+    logic [COUNTER_W-1:0]            counter_q;
+    logic                            status_error;   // STATUS.error
 
     //==================================================================
     // Handshakes
@@ -157,18 +163,18 @@ module axi4lite_reg_slave #(
     //
     // The cascade is strict, so exactly one err_* is ever true.
     //==================================================================
-    wire       wr_misalign    =  (wr_addr[1:0] != 2'b00);
-    wire       wr_implemented =  (wr_addr[11:5] == 7'b0);
-    wire [2:0] wr_idx         =   wr_addr[4:2];
+    wire                    wr_misalign    = (wr_addr[1:0] != 2'b00);
+    wire                    wr_implemented = (wr_addr[REG_IMPL_MSB:REG_IMPL_LSB] == '0);
+    wire [REG_INDEX_W-1:0]  wr_idx         =  wr_addr[REG_INDEX_MSB:REG_INDEX_LSB];
 
     wire wr_err_misalign = wr_misalign;
     wire wr_err_unimpl   = !wr_misalign && !wr_implemented;
     wire wr_err_strobe   = !wr_misalign && wr_implemented && !(&wr_strb);
     wire wr_error        = wr_err_misalign || wr_err_unimpl || wr_err_strobe;
 
-    wire       rd_misalign    =  (ARADDR[1:0] != 2'b00);
-    wire       rd_implemented =  (ARADDR[11:5] == 7'b0);
-    wire [2:0] rd_idx         =   ARADDR[4:2];
+    wire                    rd_misalign    = (ARADDR[1:0] != 2'b00);
+    wire                    rd_implemented = (ARADDR[REG_IMPL_MSB:REG_IMPL_LSB] == '0);
+    wire [REG_INDEX_W-1:0]  rd_idx         =  ARADDR[REG_INDEX_MSB:REG_INDEX_LSB];
 
     wire rd_err_misalign = rd_misalign;
     wire rd_err_unimpl   = !rd_misalign && !rd_implemented;
@@ -179,7 +185,7 @@ module axi4lite_reg_slave #(
     // any register or memory state" is enforced -- in one place.
     wire reg_write = do_write && !wr_error;
 
-    wire reset_stats_pulse = reg_write && (wr_idx == R_CTRL)       && wr_data[1];
+    wire reset_stats_pulse = reg_write && (wr_idx == R_CTRL)       && wr_data[CTRL_RESET_STATS_LSB];
     wire w1c_write         = reg_write && (wr_idx == R_INT_STATUS);
 
     //==================================================================
@@ -192,9 +198,19 @@ module axi4lite_reg_slave #(
     wire ev_unimpl   = (do_write && wr_err_unimpl)   || (ar_hs && rd_err_unimpl);
     wire ev_misalign = (do_write && wr_err_misalign) || (ar_hs && rd_err_misalign);
     wire ev_strobe   = (do_write && wr_err_strobe);
-    wire ev_overflow = ctrl_enable && !reset_stats_pulse && (counter_q == 16'hFFFF);
+    wire ev_overflow = ctrl_enable && !reset_stats_pulse && (counter_q == '1);
 
-    wire [3:0] int_set = {ev_overflow, ev_strobe, ev_misalign, ev_unimpl};
+    // Assembled by generated bit position rather than by concatenation
+    // order, so reordering the fields in regmap.yaml cannot silently
+    // reassign an event to the wrong bit.
+    logic [INT_STATUS_W-1:0] int_set;
+    always_comb begin
+        int_set                              = '0;
+        int_set[INT_STATUS_UNIMPL_LSB]       = ev_unimpl;
+        int_set[INT_STATUS_MISALIGN_LSB]     = ev_misalign;
+        int_set[INT_STATUS_STROBE_LSB]       = ev_strobe;
+        int_set[INT_STATUS_OVERFLOW_LSB]     = ev_overflow;
+    end
 
     //==================================================================
     // STATUS.busy -- write path only, spec section 5.
@@ -218,14 +234,18 @@ module axi4lite_reg_slave #(
         // All eight values of a 3-bit selector are enumerated, so the
         // case is inherently full and needs no default.
         case (rd_idx)
-            R_CTRL       : rd_mux = {30'b0, 1'b0, ctrl_enable};
-            R_STATUS     : rd_mux = {30'b0, status_error, busy};
-            R_CONFIG     : rd_mux = {24'b0, config_q};
-            R_INT_ENABLE : rd_mux = {28'b0, int_enable_q};
-            R_INT_STATUS : rd_mux = {28'b0, int_status_q};
+            // CTRL and STATUS are assembled bit by bit rather than from a
+            // width, because neither is plain storage: CTRL[1] is a
+            // command bit that reads 0 unconditionally, and STATUS's two
+            // bits come from different places entirely.
+            R_CTRL       : rd_mux = {{(DATA_WIDTH-CTRL_W){1'b0}}, 1'b0, ctrl_enable};
+            R_STATUS     : rd_mux = {{(DATA_WIDTH-STATUS_W){1'b0}}, status_error, busy};
+            R_CONFIG     : rd_mux = {{(DATA_WIDTH-CONFIG_W){1'b0}}, config_q};
+            R_INT_ENABLE : rd_mux = {{(DATA_WIDTH-INT_ENABLE_W){1'b0}}, int_enable_q};
+            R_INT_STATUS : rd_mux = {{(DATA_WIDTH-INT_STATUS_W){1'b0}}, int_status_q};
             R_SCRATCH    : rd_mux = scratch_q;
-            R_COUNTER    : rd_mux = {16'b0, counter_q};
-            R_ID         : rd_mux = ID_VALUE;
+            R_COUNTER    : rd_mux = {{(DATA_WIDTH-COUNTER_W){1'b0}}, counter_q};
+            R_ID         : rd_mux = ID_RESET;
         endcase
     end
 
@@ -298,16 +318,16 @@ module axi4lite_reg_slave #(
     //==================================================================
     always_ff @(posedge ACLK or negedge ARESETn) begin
         if (!ARESETn) begin
-            ctrl_enable  <= 1'b0;
-            config_q     <= 8'hFF;      // reset value 0x0000_00FF, spec section 5
-            int_enable_q <= 4'h0;
-            scratch_q    <= 32'h0;
+            ctrl_enable  <= CTRL_ENABLE_RESET[0];
+            config_q     <= CONFIG_RESET    [CONFIG_W-1:0];      // 0x0000_00FF
+            int_enable_q <= INT_ENABLE_RESET[INT_ENABLE_W-1:0];
+            scratch_q    <= SCRATCH_RESET   [SCRATCH_W-1:0];
         end else if (reg_write) begin
             case (wr_idx)
-                R_CTRL       : ctrl_enable  <= wr_data[0];
-                R_CONFIG     : config_q     <= wr_data[7:0];
-                R_INT_ENABLE : int_enable_q <= wr_data[3:0];
-                R_SCRATCH    : scratch_q    <= wr_data[31:0];
+                R_CTRL       : ctrl_enable  <= wr_data[CTRL_ENABLE_LSB];
+                R_CONFIG     : config_q     <= wr_data[CONFIG_W-1:0];
+                R_INT_ENABLE : int_enable_q <= wr_data[INT_ENABLE_W-1:0];
+                R_SCRATCH    : scratch_q    <= wr_data[SCRATCH_W-1:0];
                 default      : ;          // RO and W1C handled elsewhere
             endcase
         end
@@ -320,9 +340,9 @@ module axi4lite_reg_slave #(
     // same cycle the result is 0.  The branch ORDER is the spec rule.
     //==================================================================
     always_ff @(posedge ACLK or negedge ARESETn) begin
-        if (!ARESETn)               counter_q <= 16'h0;
-        else if (reset_stats_pulse) counter_q <= 16'h0;
-        else if (ctrl_enable)       counter_q <= counter_q + 16'd1;
+        if (!ARESETn)               counter_q <= COUNTER_COUNT_RESET[COUNTER_W-1:0];
+        else if (reset_stats_pulse) counter_q <= '0;
+        else if (ctrl_enable)       counter_q <= counter_q + 1'b1;
     end
 
     //==================================================================
@@ -335,9 +355,9 @@ module axi4lite_reg_slave #(
     //==================================================================
     always_ff @(posedge ACLK or negedge ARESETn) begin
         if (!ARESETn) begin
-            int_status_q <= 4'h0;
+            int_status_q <= INT_STATUS_RESET[INT_STATUS_W-1:0];
         end else begin
-            for (int i = 0; i < 4; i++) begin
+            for (int i = 0; i < INT_STATUS_W; i++) begin
                 if (int_set[i])                        int_status_q[i] <= 1'b1;
                 else if (w1c_write && wr_data[i])      int_status_q[i] <= 1'b0;
             end
@@ -375,7 +395,8 @@ module axi4lite_reg_slave #(
     //==================================================================
     wire _unused_ok = &{1'b0,
                         AWPROT, ARPROT,
-                        wr_addr[ADDR_WIDTH-1:12], ARADDR[ADDR_WIDTH-1:12],
+                        wr_addr[ADDR_WIDTH-1:REG_IMPL_MSB+1],
+                        ARADDR [ADDR_WIDTH-1:REG_IMPL_MSB+1],
                         1'b0};
 
 endmodule : axi4lite_reg_slave

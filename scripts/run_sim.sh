@@ -36,7 +36,10 @@ BUILD_ROOT="${TMPDIR:-/tmp}"
 BUILD_ROOT="${BUILD_ROOT%/}/axi4lite_vbuild"
 BUILD_ROOT="${BUILD_ROOT// /_}"
 
-RTL=( "$ROOT/rtl/axi4lite_reg_slave.sv" "$ROOT/rtl/axi4lite_mem_slave.sv" )
+# The generated register-map package comes FIRST: axi4lite_reg_slave
+# imports it. Regenerate with `make regmap` after editing regmap.yaml.
+RTL=( "$ROOT/rtl/gen/axi4lite_reg_pkg.sv" \
+      "$ROOT/rtl/axi4lite_reg_slave.sv" "$ROOT/rtl/axi4lite_mem_slave.sv" )
 IF="$ROOT/tb/interface/axi4lite_if.sv"
 BIND_REG="$ROOT/tb/interface/axi4lite_reg_bind.sv"
 BIND_MEM="$ROOT/tb/interface/axi4lite_mem_bind.sv"

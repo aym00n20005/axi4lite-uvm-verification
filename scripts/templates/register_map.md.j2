@@ -1,0 +1,74 @@
+# Register map
+
+**GENERATED** by `scripts/regmap_gen.py` from `scripts/{{ source }}`.
+Do not edit — edit the YAML and run `make regmap`.
+
+The same YAML generates `rtl/gen/axi4lite_reg_pkg.sv` (the RTL's indices,
+widths, resets and masks) and `tb/ral/axi_reg_block.sv` (the UVM RAL model), so
+this table cannot disagree with either. `make regcheck` additionally verifies it
+against §5 of [the specification](dut_spec.md), which remains the source of
+truth: if the two disagree, the spec wins and this file is wrong.
+
+Region base `0x{{ "%08X"|format(block.base_addr) }}`, size `0x{{ "%X"|format(block.size) }}`.
+A register is **implemented** iff `ADDR[{{ block.impl_msb }}:{{ block.impl_lsb }}] == 0`; the register is selected by
+`ADDR[{{ block.index_msb }}:{{ block.index_lsb }}]`. Offsets `0x{{ "%02X"|format(block.reg_count * (block.data_width // 8)) }}`–`0x{{ "%03X"|format(block.size - 1) }}` are decoded and unimplemented → `SLVERR`.
+
+## Registers
+
+| Offset | Name | Access | Reset | Implemented | Reserved |
+|---|---|---|---|---|---|
+{% for r in regs %}
+| `0x{{ "%02X"|format(r.offset) }}` | `{{ r.name }}` | {{ r.access }} | `0x{{ "%08X"|format(r.reset) }}` | `0x{{ "%08X"|format(r.mask) }}` | `0x{{ "%08X"|format(r.reserved) }}` |
+{% endfor %}
+
+Reserved bits read 0 and cannot retain written data — feature F13. The RTL
+enforces this by storing each register at implemented width only, so a reserved
+bit has no flop behind it.
+
+## Fields
+
+{% for r in regs %}
+### `{{ r.name }}` — `0x{{ "%02X"|format(r.offset) }}`, {{ r.access }}
+
+{% if r.desc %}
+{{ r.desc }}
+
+{% endif %}
+| Bits | Field | Access | Reset | Checked by RAL | Notes |
+|---|---|---|---|---|---|
+{% for f in r.fields %}
+| `[{{ f.msb }}{% if f.width > 1 %}:{{ f.lsb }}{% endif %}]` | `{{ f.name }}` | {{ f.access }} | `0x{{ "%X"|format(f.reset) }}` | {{ "yes" if f.check else "**no**" }}{% if f.volatile %} (volatile){% endif %} | {{ f.desc }} |
+{% endfor %}
+
+{% endfor %}
+## Access types
+
+Four are supported. `scripts/regmap_gen.py` rejects anything else rather than
+guessing — adding a fifth means deciding what the RTL, the RAL and this document
+each do with it, which is three decisions rather than one.
+
+| Type | Meaning |
+|---|---|
+{% for a, d in access_desc.items() %}
+| `{{ a }}` | {{ d }} |
+{% endfor %}
+
+## Fields the RAL does not check
+
+Four fields are hardware-writable, so the RAL mirror can legitimately disagree
+with the DUT and a comparison would produce a false failure rather than a
+detection. Each is masked in the RAL exactly where `tb/env/axi_scoreboard.sv`
+masks it, so the two independent models make the same claim about what is
+knowable from transactions alone.
+
+{% for r in regs %}
+{% for f in r.fields %}
+{% if not f.check %}
+- **`{{ r.name }}.{{ f.name }}`** — {{ f.desc }}
+{% endif %}
+{% endfor %}
+{% endfor %}
+
+Every other field is compared, including all of `INT_STATUS[2:0]` — that
+comparison is what catches an `INT_STATUS` implemented as plain RW, which is the
+injection specification §9 assigns to the RAL access-policy test.

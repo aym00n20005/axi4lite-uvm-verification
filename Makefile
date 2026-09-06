@@ -25,9 +25,14 @@
 
 SIM  ?= verilator
 TEST ?= all
-RTL  := rtl/axi4lite_reg_slave.sv rtl/axi4lite_mem_slave.sv
 
-.PHONY: test coverage lint clean help playground setup elab
+# The register slave imports axi4lite_reg_pkg, so the two are one lint
+# unit. The memory slave has no register map and stands alone.
+REG_PKG  := rtl/gen/axi4lite_reg_pkg.sv
+LINT_reg := $(REG_PKG) rtl/axi4lite_reg_slave.sv
+LINT_mem := rtl/axi4lite_mem_slave.sv
+
+.PHONY: test coverage lint clean help playground setup elab regmap regcheck
 
 #---------------------------------------------------------------------
 # One-time toolchain. Idempotent: brew and fetch_uvm.sh both no-op when
@@ -54,14 +59,26 @@ test:
 coverage:
 	@./scripts/run_sim.sh verilator $(TEST) --coverage
 
-# One file at a time: linting both together trips MULTITOP, since each
-# is a legitimate top in its own right until the interconnect exists.
+# One slave at a time: linting both together trips MULTITOP, since each
+# is a legitimate top in its own right.
 lint:
-	@for f in $(RTL); do \
-		echo "  lint $$f"; \
-		verilator --lint-only -Wall --timing $$f || exit 1; \
-	done
+	@echo "  lint axi4lite_reg_slave (+ generated package)"
+	@verilator --lint-only -Wall --timing $(LINT_reg)
+	@echo "  lint axi4lite_mem_slave"
+	@verilator --lint-only -Wall --timing $(LINT_mem)
 	@echo "lint: clean"
+
+#---------------------------------------------------------------------
+# Register map. regmap.yaml -> RTL package + RAL model + documentation.
+# regcheck closes the one edge generation cannot: YAML vs the spec.
+#---------------------------------------------------------------------
+regmap:
+	@python3 scripts/regmap_gen.py
+	@python3 scripts/check_regmap.py
+
+regcheck:
+	@python3 scripts/check_regmap.py
+	@python3 scripts/regmap_gen.py --check
 
 #---------------------------------------------------------------------
 # EDA Playground bundling.
@@ -89,7 +106,7 @@ PLAY_hello      := tb/uvm/uvm_hello.sv
 # satisfy a combined bind file elaborated it as a second, unconnected
 # top-level module with floating inputs and a checker bound to it --
 # harmless here only because ARESETn was X, which is not a guarantee.
-PLAY_smoke_DESIGN := tb/interface/axi4lite_if.sv rtl/axi4lite_reg_slave.sv \
+PLAY_smoke_DESIGN := tb/interface/axi4lite_if.sv $(REG_PKG) rtl/axi4lite_reg_slave.sv \
                      tb/interface/axi4lite_reg_bind.sv
 PLAY_smoke        := tb/agent/axi_transaction.sv tb/agent/axi_sequencer.sv \
                      tb/agent/axi_driver.sv tb/agent/axi_monitor.sv \

@@ -1,0 +1,200 @@
+#=====================================================================
+# regmap.yaml -- the register file, once.
+#
+# Four consumers, one source:
+#
+#   rtl/gen/axi4lite_reg_defs.svh   indices, reset values, implemented
+#                                   widths -- included by the RTL
+#   tb/ral/axi_reg_block.sv         the UVM RAL model
+#   docs/register_map.md            the documentation table
+#   scripts/check_regmap.py         cross-check against dut_spec.md section 5
+#
+# The RTL's BEHAVIOUR is not generated and is not meant to be. W1C
+# set-beats-clear, CTRL[1]'s self-clearing pulse, STATUS.error's
+# transparency rule and COUNTER's reset-over-increment priority are four
+# spec paragraphs each, and a generator that emitted them would be a
+# worse expression of them than the hand-written always_ff blocks that
+# cite the paragraphs directly. What IS generated is everything that can
+# silently disagree between four files: names, offsets, widths, resets
+# and access policies. See docs/automation_plan.md T4.
+#
+# Source: docs/dut_spec.md v0.3 section 5. If the two disagree,
+# `make regcheck` fails and the SPEC wins -- it is the source of truth
+# and this file is a machine-readable projection of it.
+#=====================================================================
+
+block:
+  name:        axi4lite_reg_slave
+  ral_name:    axi_reg_block
+  base_addr:   0x00000000
+  size:        0x1000          # 4 KB register region, spec section 4
+  data_width:  32
+  addr_width:  32
+
+  # Decode, spec section 5 as revised in v0.3. Implemented iff the
+  # offset is below 0x20 -- qualified on the FULL offset, not ADDR[7:2],
+  # because 0x100 must return SLVERR rather than aliasing onto CTRL.
+  impl_msb:    11
+  impl_lsb:    5
+  index_msb:   4
+  index_lsb:   2
+
+# access: one of RW, RO, W1C, WC. Anything else is rejected by
+# regmap_gen.py rather than guessed at -- see automation_plan.md T4's
+# scope note.
+#
+# volatile: hardware can change this field without a bus write, so the
+#   RAL mirror may legitimately disagree with the DUT.
+# check: false suppresses the RAL's data comparison for the field. Set
+#   only where the scoreboard also declines to predict the same value,
+#   so the two models make identical claims about what is knowable.
+registers:
+
+  - name:   CTRL
+    offset: 0x00
+    access: RW
+    desc:   "Control. enable gates COUNTER; reset_stats is a command bit."
+    fields:
+      - name: enable
+        bits: 0
+        access: RW
+        reset: 0
+        desc: "Gates COUNTER increment."
+      - name: reset_stats
+        bits: 1
+        access: WC
+        reset: 0
+        desc: >-
+          Self-clearing command bit. Writing 1 clears COUNTER with priority
+          over increment; the bit itself always reads 0. Spec section 5,
+          clarified in v0.3 -- modelled WC and not RW precisely so bit_bash
+          expects the read-back of 0 rather than flagging it.
+
+  - name:   STATUS
+    offset: 0x04
+    access: RO
+    desc:   "Status. Read-only, hardware-updated."
+    fields:
+      - name: busy
+        bits: 0
+        access: RO
+        reset: 0
+        volatile: true
+        check: false
+        desc: >-
+          1 while the write path has an accepted transaction whose B response
+          has not completed. Cycle-level state; the scoreboard masks it for
+          the same reason (axi_scoreboard.sv, mask 32'hFFFF_FFFE).
+      - name: error
+        bits: 1
+        access: RO
+        reset: 0
+        volatile: true
+        check: false
+        desc: >-
+          Last completed register transaction returned SLVERR. Hardware
+          writes it on every completed transaction except a read of STATUS
+          itself, which the RAL has no way to express -- so the RAL declines
+          to check it and the scoreboard, which can express it, does.
+
+  - name:   CONFIG
+    offset: 0x08
+    access: RW
+    desc:   "Configuration. Reserved bits [31:8] read 0 and cannot store data."
+    fields:
+      - name: cfg
+        bits: "7:0"
+        access: RW
+        reset: 0xFF
+        desc: "Reset value 0x0000_00FF -- the only non-zero reset in the block bar ID."
+
+  - name:   INT_ENABLE
+    offset: 0x0C
+    access: RW
+    desc:   "Interrupt enables, one per INT_STATUS bit."
+    fields:
+      - name: en
+        bits: "3:0"
+        access: RW
+        reset: 0
+        desc: "Enable mask. Bit n pairs with INT_STATUS bit n."
+
+  - name:   INT_STATUS
+    offset: 0x10
+    access: W1C
+    desc: >-
+      Write-1-to-clear, with real hardware event sources. Set beats a
+      simultaneous clear (spec section 5) -- that rule is behaviour and
+      lives in the RTL, not here.
+    fields:
+      - name: unimpl
+        bits: 0
+        access: W1C
+        reset: 0
+        volatile: true
+        desc: "Set by an access to an unimplemented register offset (0x20-0xFFF)."
+      - name: misalign
+        bits: 1
+        access: W1C
+        reset: 0
+        volatile: true
+        desc: "Set by a misaligned register access."
+      - name: strobe
+        bits: 2
+        access: W1C
+        reset: 0
+        volatile: true
+        desc: "Set by an attempted partial-strobe register write."
+      - name: overflow
+        bits: 3
+        access: W1C
+        reset: 0
+        volatile: true
+        check: false
+        desc: >-
+          Set by COUNTER wrapping 0xFFFF -> 0x0000. Inherits COUNTER's
+          unpredictability, so it is masked here exactly as the scoreboard
+          masks it (mask 32'hFFFF_FFF7).
+
+  - name:   SCRATCH
+    offset: 0x14
+    access: RW
+    desc:   "Full-width RW with no side effects. The one register that is only storage."
+    fields:
+      - name: value
+        bits: "31:0"
+        access: RW
+        reset: 0
+        desc: "32 bits, no reserved field, no hardware writer."
+
+  - name:   COUNTER
+    offset: 0x18
+    access: RO
+    desc: >-
+      Free-running 16-bit counter. 16 and not 32 so the overflow event is
+      reachable in a regression -- a 32-bit counter would take ~43 s of
+      simulated time and INT_STATUS[3] would be dead code (spec section 5).
+    fields:
+      - name: count
+        bits: "15:0"
+        access: RO
+        reset: 0
+        volatile: true
+        check: false
+        desc: >-
+          Increments every clock while CTRL.enable. A transaction-level model
+          cannot know the value, so neither the RAL nor the scoreboard checks
+          it -- except in the one state the scoreboard can prove (cleared by
+          reset_stats and frozen with enable low), which is what catches
+          BUG-006.
+
+  - name:   ID
+    offset: 0x1C
+    access: RO
+    desc:   "Constant identifier. The one register whose read value is known before the DUT is built."
+    fields:
+      - name: id
+        bits: "31:0"
+        access: RO
+        reset: 0xDEADBEEF
+        desc: "Reads 0xDEAD_BEEF. Writes are accepted with OKAY and discarded."
