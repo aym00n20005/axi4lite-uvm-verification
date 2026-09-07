@@ -69,27 +69,68 @@ Four of those five rows are consequences of one design decision, recorded in
 
 ## Functional coverage — measured on Xcelium
 
-The hand tally from the four EDA Playground runs. `axi_multiseed_test` is the one
-that closes the model; the directed tests are narrower by design and their gaps
-are all attributable to what each one does not do.
+The hand tally from the four EDA Playground runs, all four of them clean.
+`axi_multiseed_test` closes the model broadly; the directed tests are narrower by
+design and their gaps are all attributable to what each one does not do.
 
-| Group | `multiseed` | `protocol` | `register` | Goal |
-|---|---|---|---|---|
-| `cg_transaction_type` | **2/2** | **2/2** | **2/2** | 100% |
-| `cg_address_region` | **5/5** | **5/5** | 3/5 | 100% |
-| `cg_register_offset` | **8/8** | **8/8** | 5/8 | 100% |
-| `cg_alignment` | **4/4** | **4/4** | **4/4** | 100% |
-| `cg_wstrb` | **16/16** | **16/16** | 8/16 | ≥90% |
-| `cg_response` | **3/3** | **3/3** | **3/3** | 100% |
-| `cg_error_source` | **4/4** | **4/4** | **4/4** | 100% |
-| `cg_aw_w_order` | **3/3** | **3/3** | **3/3** | 100% |
-| `cg_valid_delay` | 3/4 | 2/4 | 2/4 | 100% |
-| `cg_backpressure` | **4/4** | **4/4** | **4/4** | 100% |
-| `cg_reset` | 0/3 | 1/3 | 0/3 | 100% |
+| Group | `multiseed` | `protocol` | `register` | `ral` | Union | Goal |
+|---|---|---|---|---|---|---|
+| `cg_transaction_type` | **2/2** | **2/2** | **2/2** | **2/2** | **2/2** | 100% |
+| `cg_address_region` | **5/5** | **5/5** | 3/5 | 2/5 | **5/5** | 100% |
+| `cg_register_offset` | **8/8** | **8/8** | 5/8 | **8/8** | **8/8** | 100% |
+| `cg_alignment` | **4/4** | **4/4** | **4/4** | 1/4 | **4/4** | 100% |
+| `cg_wstrb` | **16/16** | **16/16** | 8/16 | 1/16 | **16/16** | ≥90% |
+| `cg_response` | **3/3** | **3/3** | **3/3** | 2/3 | **3/3** | 100% |
+| `cg_error_source` | **4/4** | **4/4** | **4/4** | 2/4 | **4/4** | 100% |
+| `cg_aw_w_order` | **3/3** | **3/3** | **3/3** | **3/3** | **3/3** | 100% |
+| `cg_valid_delay` | 3/4 | 2/4 | 2/4 | 2/4 | 3/4 † | 100% |
+| `cg_backpressure` | **4/4** | **4/4** | **4/4** | **4/4** | **4/4** | 100% |
+| `cg_reset` | 0/3 | **3/3** | 0/3 | 0/3 | **3/3** | 100% |
 
-**Nine of eleven groups close on `axi_multiseed_test` alone**, including
-`cg_address_region` at 5/5 and `cg_response` at 3/3 — the bins that were
-structurally unreachable before the interconnect existed.
+**Ten of the eleven groups reach 100%, and the eleventh is at its structural
+maximum.** † `cg_valid_delay`'s `d0` bin cannot be produced by this driver at
+all — the reasoning is below, and it is a property of the driver's shape rather
+than a stimulus gap.
+
+Every bin that this environment can hit, it hits.
+
+### `cg_reset` — closed, and it took two defects to get there
+
+This group read **0/3 in every run this project had ever produced** until the
+last one. It now reads 3/3, and the path to it is worth recording because
+nothing about it was a stimulus problem.
+
+`axi_reset_seq` was written to hit all three bins and had been in the tree for
+some time. What stopped it:
+
+1. `aw_delay == 25` against a hard constraint of `[0:20]`. The `randomize()`
+   failed, the transaction completed before reset arrived, and `RESET_IDLE` was
+   the only bin reachable. The test *passed its own checks* while doing this.
+2. With that fixed, the mid-write case finally reset a transaction that was
+   genuinely in flight — and hung, because nothing retired it
+   ([BUG-014](bug_reports/BUG-014.md)). The watchdog killed the run at 40 µs.
+
+Only after both were fixed did the sequence do what it was written to do:
+
+```
+[axi_monitor] RESET low 5 cycles                             -> RESET_IDLE
+[axi_monitor] RESET low 5 cycles during a WRITE              -> RESET_MID_WRITE
+[axi_monitor] RESET low 5 cycles                during a READ -> RESET_MID_READ
+```
+
+**A zero in a coverage table is not always a missing test.** Here the test
+existed, ran, and reported all-pass for two runs while covering a third of what
+it claimed. The bin is what noticed.
+
+The accounting confirms it end to end:
+
+```
+sequences issued 128/111 | driver dispatched 128/111 (1/1 abandoned by reset)
+                         | monitor saw 127/110 | scoreboard got 127/110
+```
+
+One write and one read abandoned, so the monitor sees exactly one fewer of each.
+That line is the reason the count check exists.
 
 ### `cg_valid_delay` — the `d0` bin is unreachable by construction
 
@@ -106,16 +147,15 @@ across back-to-back transactions would close the bin and would also be unable to
 express a per-transaction delay at all.
 
 **The measurement is still the right one.** `d1_3`, `d4_10` and `d_over` are all
-hit, so the group distinguishes short gaps from long ones, which is what F28 and
-the delay distribution are about. What it cannot distinguish is zero from one.
+hit by `axi_multiseed_test`, so the group distinguishes short gaps from long
+ones, which is what F28 and the delay distribution are about. What it cannot
+distinguish is zero from one.
 
-### `cg_reset` — only one test asserts reset
-
-`axi_protocol_test` hits `RESET_IDLE` (1/3). `RESET_MID_WRITE` and
-`RESET_MID_READ` need reset to land while a transaction is genuinely in flight,
-which `axi_reset_seq` constructs with a 20-cycle `aw_delay` — reachable, and the
-remaining gap after the delay-constraint fix. The other two tests never reset,
-so 0/3 there is correct rather than a hole.
+The directed tests sit at 2/4 because their delays come from a narrow
+distribution, not because they are missing anything: `d1_3` needs a one-to-three
+cycle gap, and the directed sequences mostly use either 0 (which lands in the
+same observed bin as 1) or their own larger, deliberate delays. The random
+bundle is what spreads them, which is what it is for.
 
 ## The groups and their goals
 
