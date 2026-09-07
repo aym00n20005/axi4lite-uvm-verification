@@ -147,3 +147,45 @@ hw_reset  →  bit_bash  →  explicit policy checks
 | Register coverage (`UVM_CVR_*`) | The functional coverage model already samples every register offset and access class from the monitor. A second, independent count would be duplication rather than corroboration — unlike the scoreboard/RAL masking above, where the duplication *is* the check |
 | The memory as a `uvm_mem` | 256 words of plain storage with no access policy. The scoreboard's associative-array model is a better fit and already exists |
 | Multiple maps or address translation | One master port, one map |
+
+
+---
+
+## Volatile fields are not checked by the library sequences — measured
+
+`scripts/regmap.yaml` marks `STATUS.busy`, `STATUS.error`, `COUNTER.count` and
+all four `INT_STATUS` bits `volatile: true`, because hardware changes them
+without a bus write. That is required: without it, `uvm_reg_hw_reset_seq` and
+every `mirror()` would report false failures whenever the DUT set a bit between
+the model's write and its read.
+
+**It has a consequence that is not obvious from the RAL API**, and this project
+found it by running the BUG-004 injection rather than by reading:
+
+```systemverilog
+// uvm_reg_field.svh:818, inside configure()
+m_check = volatile ? UVM_NO_CHECK : UVM_CHECK;
+```
+
+```systemverilog
+// uvm_reg_bit_bash_seq.svh, building the don't-care mask
+dc = (fields[k].get_compare() == UVM_NO_CHECK);
+...
+if (dc_mask[k]) continue;          // the bit is never bashed
+```
+
+Declaring a field volatile turns off its comparison **everywhere**, so
+`bit_bash` skips it and `hw_reset` (which checks via `mirror(UVM_CHECK)`) skips
+it too. The access policy of a volatile field is never verified by the RAL.
+
+For this register map that means the RAL does real, unforgeable work on the
+seven non-volatile registers, and **no access-policy work at all on
+`INT_STATUS`** — the one register whose access policy is the most interesting
+thing about it.
+
+`INT_STATUS`'s W1C semantics are therefore covered by
+[`axi_ral_seq`'s directed F12 block](../tb/sequences/axi_ral_seq.sv), the
+scoreboard's reference model, and `f_w1c_no_spurious_set` in the formal file.
+[BUG-004](bug_reports/BUG-004.md) records the measurement that established this,
+including the option of selectively re-enabling compare with `set_compare()`,
+which has **not** been tried.

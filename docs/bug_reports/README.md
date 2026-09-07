@@ -10,16 +10,22 @@ per verification plan §7. A testbench that has never caught a bug is unproven.
 | [BUG-001](BUG-001.md) | **driver** | SVA `a_awvalid_stable` | detected |
 | [BUG-002](BUG-002.md) | both slaves | SVA `a_bvalid_not_early` | detected, reverted |
 | [BUG-003](BUG-003.md) | memory slave | **scoreboard**, as §9 requires | detected, reverted |
-| [BUG-004](BUG-004.md) | `INT_STATUS` as plain RW | a directed check and the formal proof, both measured. The §9-assigned RAL detection is **predicted, not yet measured** — the RAL's first run found [BUG-013](BUG-013.md) instead | detected, reverted |
+| [BUG-004](BUG-004.md) | `INT_STATUS` as plain RW | the directed F12 check, the scoreboard and the formal proof — 5 `UVM_ERROR`, measured. **Not** by the §9-assigned RAL `bit_bash`, which is structurally blind to volatile fields | detected, reverted |
 | [BUG-005](BUG-005.md) | interconnect decode | **scoreboard + decode test**, as §9 requires; also random traffic, first seed | detected, reverted |
 | [BUG-006](BUG-006.md) | register slave `COUNTER` | **directed test**, as §9 requires; also the scoreboard | detected, reverted |
 
 Five of the six were caught by the mechanism the specification assigned it,
 before any of those mechanisms existed. That is what §9 was for.
 
-BUG-004 is the exception and it is stated plainly: it was caught, twice, but not
-yet by the RAL that §9 names — because the RAL's first execution found a defect
-in its own adapter. That claim stays open until a clean `axi_ral_test` runs.
+BUG-004 is the exception, and the exception turned out to be the most useful
+result in the table. It was caught three times over — but **never** by the RAL
+`bit_bash` that §9 names, and never could be. `uvm_reg_field::configure()` sets
+`m_check = UVM_NO_CHECK` for any field declared `volatile`, and `bit_bash` skips
+every bit whose compare mode is `UVM_NO_CHECK`. `INT_STATUS` must be volatile —
+hardware sets it — so its access policy is invisible to the library sequences.
+
+The check was silent on the injected DUT *and* on the correct one. A check that
+passes on both is not checking.
 
 ## Genuine finds
 
@@ -87,3 +93,4 @@ never caught anything is unproven, whatever its coverage says.
 | Directed tests written last (F09, F24) | BUG-011, BUG-012 — both in the reference model |
 | Running the RAL at all | BUG-013 — in the adapter, the one file nothing else executes |
 | The inactivity watchdog | BUG-014 — a bus that went quiet, with no assertion and no mismatch to report it |
+| Running an injection instead of predicting it | BUG-004's real detection story — and the discovery that `bit_bash` is blind to volatile fields |
