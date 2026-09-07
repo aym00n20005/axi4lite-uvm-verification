@@ -231,7 +231,7 @@ PLAY_mem        := tb/agent/axi_transaction.sv tb/agent/axi_sequencer.sv \
 # earlier would silently produce an empty file list.
 PLAY_random_DESIGN := $(PLAY_smoke_DESIGN)
 PLAY_random        := $(PLAY_smoke)
-PLAY_random_DEFINE := `define AXI_TEST "axi_random_test"
+PLAY_random_TEST := axi_random_test
 
 #---------------------------------------------------------------------
 # The system bundles -- the ones that actually get pasted.
@@ -285,12 +285,12 @@ PLAY_proto        := $(PLAY_CORE) tb/sequences/axi_smoke_seq.sv \
                      tb/sequences/axi_proto_seqs.sv \
                      tb/tests/axi_smoke_test.sv \
                      tb/tests/axi_proto_tests.sv $(PLAY_TOP)
-PLAY_proto_DEFINE := `define AXI_TEST "axi_protocol_test"
+PLAY_proto_TEST := axi_protocol_test
 
 PLAY_reg_DESIGN := $(PLAY_SYS_DESIGN)
 PLAY_reg        := $(PLAY_CORE) tb/sequences/axi_reg_seqs.sv \
                    tb/tests/axi_reg_tests.sv $(PLAY_TOP)
-PLAY_reg_DEFINE := `define AXI_TEST "axi_register_test"
+PLAY_reg_TEST := axi_register_test
 
 PLAY_ral_DESIGN := $(PLAY_SYS_DESIGN)
 PLAY_ral        := tb/agent/axi_transaction.sv tb/agent/axi_sequencer.sv \
@@ -300,14 +300,14 @@ PLAY_ral        := tb/agent/axi_transaction.sv tb/agent/axi_sequencer.sv \
                    tb/sequences/axi_base_seq.sv tb/sequences/axi_ral_seq.sv \
                    tb/env/axi_scoreboard.sv tb/env/axi_coverage.sv tb/env/axi_env.sv \
                    tb/tests/axi_base_test.sv tb/tests/axi_ral_test.sv $(PLAY_TOP)
-PLAY_ral_DEFINE := `define AXI_RAL
-PLAY_ral_DEFINE2 := `define AXI_TEST "axi_ral_test"
+PLAY_ral_TEST  := axi_ral_test
+PLAY_ral_EXTRA := `define AXI_RAL
 
 PLAY_rand_DESIGN := $(PLAY_SYS_DESIGN)
 PLAY_rand        := $(PLAY_CORE) tb/sequences/axi_seqs.sv \
                     tb/tests/axi_random_test.sv tb/tests/axi_mem_test.sv \
                     tb/tests/axi_rand_tests.sv $(PLAY_TOP)
-PLAY_rand_DEFINE := `define AXI_TEST "axi_multiseed_test"
+PLAY_rand_TEST := axi_multiseed_test
 
 PLAY_proto_NOTE := yes
 PLAY_reg_NOTE   := yes
@@ -355,7 +355,8 @@ playground:
 	     echo "//  Save each log, then:  make import-log LOG=<file> TEST=<name>"; \
 	     echo "//===================================================================="; \
 	     echo ""; fi; \
-	   if [ -n '$(PLAY_$(PLAY)_DEFINE)' ]; then echo '$(PLAY_$(PLAY)_DEFINE)'; fi; \
+	   if [ -n '$(PLAY_$(PLAY)_EXTRA)' ]; then echo '$(PLAY_$(PLAY)_EXTRA)'; fi; \
+	   if [ -n '$(PLAY_$(PLAY)_TEST)' ]; then echo '`define AXI_TEST "$(PLAY_$(PLAY)_TEST)"'; fi; \
 	   echo '`define AXI_SEED $(SEED)'; echo ""; \
 	   for f in $$srcs; do \
 	     echo "//================ $$f ================"; cat $$f; echo ""; done; \
@@ -381,6 +382,11 @@ playground:
 	 if [ -n "$$wrote_design" ]; then \
 	   python3 scripts/strip_comments.py $$wrote_design $$wrote_design.tmp >/dev/null && mv $$wrote_design.tmp $$wrote_design; \
 	 fi; \
+	 want='$(PLAY_$(PLAY)_TEST)'; \
+	 if [ -n "$$want" ] && ! grep -q "\`define AXI_TEST \"$$want\"" $$wrote_tb; then \
+	   echo "ERROR: $$wrote_tb does not define AXI_TEST as \"$$want\"."; \
+	   echo "       Without it tb_top_sys falls back to its default and the run"; \
+	   echo "       dies at time 0 with UVM_FATAL [INVTST]."; exit 1; fi; \
 	 over=0; \
 	 for f in $$wrote_design $$wrote_tb; do \
 	   n=$$(wc -c < $$f | tr -d ' '); \

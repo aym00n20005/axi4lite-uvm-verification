@@ -25,19 +25,29 @@ before any of those mechanisms existed. That is what §9 was for.
 | [BUG-008](BUG-008.md) | protocol checker | random traffic, first run | fixed |
 | [BUG-009](BUG-009.md) | driver | a second DUT shifted the schedule | fixed |
 | [BUG-010](BUG-010.md) | `axi_transaction` constraints | **slang elaboration**, in 0.2 s | fixed |
+| [BUG-011](BUG-011.md) | scoreboard — no reset handling | `axi_reset_seq`, first run on Xcelium | fixed |
+| [BUG-012](BUG-012.md) | scoreboard — `STATUS.error` on an overlapped read | `axi_status_seq`, first run on Xcelium | fixed |
 
 Numbering: spec §9 reserves 001–006 for the planned injections. Genuine finds
 continue the same sequence from 007.
 
-**All four genuine finds are in the testbench, not the DUT.** BUG-007 was a cover
+**All six genuine finds are in the testbench, not the DUT.** BUG-007 was a cover
 point that could not fail to be covered; BUG-008 an assertion that failed on
 correct hardware; BUG-009 a driver race that passed for eleven days because the
 timing happened to be safe; BUG-010 two constraints written in a form the LRM
-grammar does not permit, accepted by the only simulator that had ever read them.
+grammar does not permit, accepted by the only simulator that had ever read them;
+BUG-011 a reference model that did not know reset had happened; BUG-012 a
+reference model predicting a field it cannot place in time.
 
 None was a missed detection. Each was false confidence of a different kind — a
 metric that could not fail, a checker that cried wolf, a race that had been
-lucky, and source that meant something other than what it said.
+lucky, source that meant something other than what it said, and twice a model
+that reported a correct DUT as broken.
+
+**Three of the six were found by the tests written last**, which is the argument
+for finishing a test list rather than stopping when the coverage number looks
+acceptable. F09 and F24 are the two features nothing had ever exercised, and each
+found a defect in the model the moment it did.
 
 That is worth stating plainly rather than hiding: the environment has found more
 defects in itself than in the design it is checking. The RTL was written from a
@@ -59,3 +69,4 @@ never caught anything is unproven, whatever its coverage says.
 | Local elaboration (slang) | BUG-010 |
 | Bounded model check | the set-vs-clear inversion — see [formal_notes.md](../formal_notes.md), where 4,576 simulation checks passed on the same design |
 | Cover-count review | BUG-007 |
+| Directed tests written last (F09, F24) | BUG-011, BUG-012 — both in the reference model |

@@ -180,6 +180,14 @@ class axi_monitor extends uvm_component;
                 beat = axi_transaction::type_id::create("ar_beat");
                 beat.addr            = vif.monitor_cb.ARADDR;
                 beat.obs_valid_delay = gap;
+                // Was a write in flight at the instant this read sampled
+                // the DUT? Answered from this component's OWN accept
+                // queues -- the driver is not asked. Spec section 1
+                // permits one read and one write at once, and the
+                // scoreboard cannot order a read against a write's
+                // internal commit. BUG-012.
+                beat.obs_overlapped_write =
+                    (aw_accepted.num() != 0) || (w_accepted.num() != 0);
                 ar_accepted.put(beat);
                 idle = 0;
             end
@@ -275,9 +283,10 @@ class axi_monitor extends uvm_component;
                     t.resp      = vif.monitor_cb.RRESP;
                     t.completed = 1'b1;
 
-                    t.obs_valid_delay  = ar.obs_valid_delay;
-                    t.obs_backpressure = stall;
-                    t.obs_timing_valid = 1'b1;
+                    t.obs_valid_delay      = ar.obs_valid_delay;
+                    t.obs_backpressure     = stall;
+                    t.obs_timing_valid     = 1'b1;
+                    t.obs_overlapped_write = ar.obs_overlapped_write;
 
                     n_reads++;
                     `uvm_info(get_type_name(),

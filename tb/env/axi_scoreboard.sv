@@ -93,6 +93,11 @@ class axi_scoreboard extends uvm_component;
 
     uvm_analysis_imp #(axi_transaction, axi_scoreboard) analysis_export;
 
+    // Reset events, from the monitor's second port. Until this existed
+    // the model did not know reset had happened, and every register it
+    // tracked stayed at its pre-reset value -- see write_rst below.
+    uvm_analysis_imp_rst #(axi_reset_event, axi_scoreboard) rst_export;
+
     //------------------------------------------------------------------
     // Reference model -- spec section 5 reset values
     //------------------------------------------------------------------
@@ -141,6 +146,7 @@ class axi_scoreboard extends uvm_component;
     function void build_phase(uvm_phase phase);
         super.build_phase(phase);
         analysis_export = new("analysis_export", this);
+        rst_export      = new("rst_export", this);
         if (!uvm_config_db #(axi_slave_kind_e)::get(this, "", "slave_kind", slave_kind))
             `uvm_info(get_type_name(),
                       "no slave_kind in config_db -- modelling the register slave", UVM_MEDIUM)
@@ -170,6 +176,44 @@ class axi_scoreboard extends uvm_component;
         return (a >= SB_MEM_BASE) && (a <= SB_MEM_LIMIT);
     endfunction
     function bit is_unmapped(bit [31:0] a);   return a > SB_MEM_LIMIT;  endfunction
+
+    //==================================================================
+    // RESET.  Spec section 5 reset values -- and spec section 6's rule
+    // that memory does NOT clear.
+    //
+    // FOUND BY axi_reset_seq ON ITS FIRST REAL RUN. The model had no
+    // idea reset had happened: it kept SCRATCH at 0xA5A5_5A5A and CONFIG
+    // at 0x55 across the reset, and reported four RDATA mismatches
+    // against a DUT that had correctly returned its reset values. The
+    // sequence's own checks passed at the same instant, on the same
+    // reads, because the sequence knew what reset means and the model
+    // did not.
+    //
+    // That contrast is the whole reason both exist. See
+    // docs/bug_reports/BUG-011.md.
+    //
+    // The memory arrays are deliberately NOT touched. Spec section 6:
+    // "reset does not clear memory contents. This matches real RAM and
+    // is stated explicitly so it isn't mistaken for a bug during
+    // scoreboard bring-up." This is that bring-up, and clearing them
+    // here would break the one check in axi_reset_seq that distinguishes
+    // a correct memory from a cleared one.
+    //==================================================================
+    int unsigned n_resets = 0;
+
+    function void write_rst(axi_reset_event ev);
+        n_resets++;
+        m_ctrl_enable  = 1'b0;
+        m_config       = 8'hFF;          // CONFIG resets to 0x0000_00FF
+        m_int_enable   = 4'h0;
+        m_int_status   = 4'h0;
+        m_scratch      = 32'h0;
+        m_status_error = 1'b0;
+        m_counter_zero = 1'b1;           // cleared, and frozen while disabled
+        `uvm_info(get_type_name(),
+                  "reset: register model returned to its spec section 5 values; memory untouched (section 6)",
+                  UVM_MEDIUM)
+    endfunction
 
     //==================================================================
     function void write(axi_transaction t);
@@ -413,7 +457,29 @@ class axi_scoreboard extends uvm_component;
 
                 SB_STATUS     : begin
                     exp_data = {30'b0, m_status_error, 1'b0};
-                    mask     = 32'hFFFF_FFFE;    // [0] busy is cycle-level
+                    // [0] busy is cycle-level and always masked.
+                    //
+                    // [1] error is normally predictable -- but NOT for a
+                    // read that overlapped a write, and that case is
+                    // exactly what F24 constructs.
+                    //
+                    // Spec section 5: STATUS.error tracks the last
+                    // COMPLETED register transaction, and the DUT updates
+                    // it at the write's internal commit -- one cycle
+                    // before the B response. A read whose AR was accepted
+                    // while that write was in flight therefore samples a
+                    // value on one side or the other of an update this
+                    // model sees only as an ordering of completions. The
+                    // spec even names the tie-break ("if a write and a
+                    // read complete on the same cycle, the WRITE
+                    // determines the value"), which is a cycle-level rule
+                    // a transaction-level model cannot apply.
+                    //
+                    // Found by axi_status_seq's F24 sweep on its first
+                    // real run: one RDATA mismatch against a correct DUT.
+                    // See docs/bug_reports/BUG-012.md.
+                    mask     = t.obs_overlapped_write ? 32'h0000_0000
+                                                      : 32'hFFFF_FFFE;
                 end
                 SB_INT_STATUS : begin
                     exp_data = {28'b0, m_int_status};
@@ -447,6 +513,7 @@ class axi_scoreboard extends uvm_component;
         `uvm_info("SB", $sformatf(
             "%0d writes, %0d reads | %0d responses checked | %0d read-data checked, %0d skipped as unpredictable | %0d mismatches",
             n_writes, n_reads, n_resp_checked, n_data_checked, n_data_skipped, n_errors), UVM_LOW)
+        `uvm_info("SB", $sformatf("%0d resets modelled", n_resets), UVM_LOW)
         if (n_resp_checked == 0)
             `uvm_error("SB", "scoreboard saw no transactions at all")
     endfunction

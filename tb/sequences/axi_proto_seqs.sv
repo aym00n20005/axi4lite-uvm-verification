@@ -117,10 +117,19 @@ class axi_reset_seq extends axi_base_seq;
         // state the monitor reports to cg_reset as RESET_MID_WRITE.
         section("F09 -- reset with a write half accepted");
 
+        // aw_delay 20, not 25. axi_transaction's c_delay_range is a HARD
+        // constraint bounding every delay to [0:20], so 25 is
+        // unsatisfiable and randomize() fails -- which Xcelium reported
+        // as *W,SVRNDF with the two conflicting lines named, and which
+        // then cascaded into the abort check failing because the
+        // transaction never got its long delay.
+        //
+        // 20 cycles is 200 ns, and pulse_reset() below fires 100 ns
+        // after issue, so the AW is still un-accepted when reset lands.
         t = axi_transaction::type_id::create("mid_write");
         if (!t.randomize() with {
                 kind == AXI_WRITE; addr == `A_SCRATCH; data == 32'hDEAD_0001;
-                strb == 4'b1111; misaligned == 0; w_delay == 0; aw_delay == 25;
+                strb == 4'b1111; misaligned == 0; w_delay == 0; aw_delay == 20;
             })
             `uvm_error(get_type_name(), "mid-write randomize failed")
         issue_nb(t);
@@ -144,7 +153,7 @@ class axi_reset_seq extends axi_base_seq;
         t = axi_transaction::type_id::create("mid_read");
         if (!t.randomize() with {
                 kind == AXI_READ; addr == `A_ID; misaligned == 0;
-                ar_delay == 0; r_ready_delay == 25;
+                ar_delay == 0; r_ready_delay == 20;      // see above
             })
             `uvm_error(get_type_name(), "mid-read randomize failed")
         issue_nb(t);

@@ -54,6 +54,11 @@ class axi_reset_event extends uvm_object;
 
 endclass : axi_reset_event
 
+// Declared here, not in axi_coverage.sv, because the SCOREBOARD needs it
+// too and is compiled first. Two components subscribe to the monitor's
+// reset port: coverage counts the event, the scoreboard resets its model.
+`uvm_analysis_imp_decl(_rst)
+
 
 class axi_transaction extends uvm_sequence_item;
 
@@ -138,6 +143,14 @@ class axi_transaction extends uvm_sequence_item;
     int unsigned obs_valid_delay;
     int unsigned obs_backpressure;
     bit          obs_timing_valid;
+
+    // Set by the monitor on a READ whose AR was accepted while a write
+    // was still in flight. Spec section 1 permits exactly that overlap,
+    // and it is what F24 needs -- but it also makes STATUS unpredictable
+    // at transaction level, because the read samples the DUT at a moment
+    // the scoreboard cannot place relative to the write's commit.
+    // See axi_scoreboard.sv. BUG-012.
+    bit          obs_overlapped_write;
 
     `uvm_object_utils_begin(axi_transaction)
         `uvm_field_enum(axi_kind_e,   kind,       UVM_ALL_ON)

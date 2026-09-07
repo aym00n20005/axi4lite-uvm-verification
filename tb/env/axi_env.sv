@@ -71,6 +71,9 @@ class axi_env extends uvm_env;
         // Second port: reset events, for cg_reset. Not a transaction, so
         // not on ap -- see axi_monitor.sv's reset_watch.
         agent.mon.rst_ap.connect(cov.rst_export);
+        // The scoreboard needs it too: without this its register model
+        // survives a reset the DUT did not. BUG-011.
+        agent.mon.rst_ap.connect(sb.rst_export);
 
 `ifdef AXI_RAL
         if (use_ral) begin

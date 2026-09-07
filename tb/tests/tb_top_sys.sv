@@ -31,8 +31,16 @@
 // one device in it.
 //======================================================================
 
+// The default names a test that EXISTS. It used to name
+// axi_regression_test, which was split into axi_protocol_test and
+// axi_register_test when the bundles were split -- and a bundle that
+// forgets to define AXI_TEST then dies at time 0 with
+// UVM_FATAL [INVTST], having compiled perfectly.
+//
+// `make playground` also refuses to emit a bundle whose AXI_TEST define
+// is missing, so this default should never be reached.
 `ifndef AXI_TEST
-  `define AXI_TEST "axi_regression_test"
+  `define AXI_TEST "axi_protocol_test"
 `endif
 
 // See tb_top.sv: Playground's command line is fixed, so the seed and the

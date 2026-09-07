@@ -56,10 +56,8 @@ typedef enum { ERR_NONE, ERR_UNIMPL, ERR_MISALIGN, ERR_STROBE } axi_err_src_e;
 // vplan section 5's three bins, named.
 typedef enum { RESET_IDLE, RESET_MID_WRITE, RESET_MID_READ } axi_reset_kind_e;
 
-// A second imp on a subscriber needs a declared suffix. UVM's
-// uvm_subscriber gives exactly one analysis_export, and cg_reset needs
-// a port carrying a different type.
-`uvm_analysis_imp_decl(_rst)
+// The _rst suffix is declared in axi_transaction.sv -- the scoreboard
+// needs it as well and is compiled before this file.
 
 
 class axi_coverage extends uvm_subscriber #(axi_transaction);

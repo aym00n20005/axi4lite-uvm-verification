@@ -67,10 +67,60 @@ cannot reach them, so they are written down as structural.
 Four of those five rows are consequences of one design decision, recorded in
 [interconnect_architecture.md §4](interconnect_architecture.md).
 
-## Functional coverage — the UVM groups
+## Functional coverage — measured on Xcelium
 
-Measured numbers are in [coverage_report.md](coverage_report.md), regenerated
-from an imported EDA Playground log by `make coverage`. Groups and their goals:
+The hand tally from the four EDA Playground runs. `axi_multiseed_test` is the one
+that closes the model; the directed tests are narrower by design and their gaps
+are all attributable to what each one does not do.
+
+| Group | `multiseed` | `protocol` | `register` | Goal |
+|---|---|---|---|---|
+| `cg_transaction_type` | **2/2** | **2/2** | **2/2** | 100% |
+| `cg_address_region` | **5/5** | **5/5** | 3/5 | 100% |
+| `cg_register_offset` | **8/8** | **8/8** | 5/8 | 100% |
+| `cg_alignment` | **4/4** | **4/4** | **4/4** | 100% |
+| `cg_wstrb` | **16/16** | **16/16** | 8/16 | ≥90% |
+| `cg_response` | **3/3** | **3/3** | **3/3** | 100% |
+| `cg_error_source` | **4/4** | **4/4** | **4/4** | 100% |
+| `cg_aw_w_order` | **3/3** | **3/3** | **3/3** | 100% |
+| `cg_valid_delay` | 3/4 | 2/4 | 2/4 | 100% |
+| `cg_backpressure` | **4/4** | **4/4** | **4/4** | 100% |
+| `cg_reset` | 0/3 | 1/3 | 0/3 | 100% |
+
+**Nine of eleven groups close on `axi_multiseed_test` alone**, including
+`cg_address_region` at 5/5 and `cg_response` at 3/3 — the bins that were
+structurally unreachable before the interconnect existed.
+
+### `cg_valid_delay` — the `d0` bin is unreachable by construction
+
+`d0` counts a request channel whose idle gap before `VALID` rose was **exactly
+zero cycles**. The driver cannot produce it. Each channel task deasserts `VALID`
+after its accept and re-asserts at the next clocking event, so there is always at
+least one idle cycle between transactions — even in `axi_b2b_seq`, where the gap
+between *accepts* is zero but the gap between `VALID` assertions is not.
+
+This is structural, not a stimulus gap, and it is a consequence of the driver
+shape the project chose deliberately: per-channel threads that each own their
+`VALID` for exactly the span of one transaction. A driver that held `VALID` high
+across back-to-back transactions would close the bin and would also be unable to
+express a per-transaction delay at all.
+
+**The measurement is still the right one.** `d1_3`, `d4_10` and `d_over` are all
+hit, so the group distinguishes short gaps from long ones, which is what F28 and
+the delay distribution are about. What it cannot distinguish is zero from one.
+
+### `cg_reset` — only one test asserts reset
+
+`axi_protocol_test` hits `RESET_IDLE` (1/3). `RESET_MID_WRITE` and
+`RESET_MID_READ` need reset to land while a transaction is genuinely in flight,
+which `axi_reset_seq` constructs with a 20-cycle `aw_delay` — reachable, and the
+remaining gap after the delay-constraint fix. The other two tests never reset,
+so 0/3 there is correct rather than a hole.
+
+## The groups and their goals
+
+Full per-run tables are in [coverage_report.md](coverage_report.md), regenerated
+by `make coverage`. Goals:
 
 | Group | Goal | Modelled since |
 |---|---|---|
