@@ -22,11 +22,43 @@ regression is about minimising it rather than pretending it is not there:
 | Cost | Before | Now |
 |---|---|---|
 | Typos | one browser round trip each | `make elab`, 0.2 s, 8 bundles |
-| 16 tests | 16 pastes | the thirteen directed scenarios are **sequences**, so all fifteen run in one simulation |
+| 16 tests | 16 pastes | the thirteen directed scenarios are **sequences**, so many run in one simulation |
 | 8 random seeds | impossible — Playground's command line is fixed | the seed is a **define**, and `axi_multiseed_test` runs eight passes in one job |
-| Total | ~24 pastes | **3**, and the three differ by one line |
+| Total | ~24 pastes | **4**, sharing one design pane |
 
-`scripts/testlist.yaml` marks those three `runner: imported`. The regression
+### Why four and not one
+
+Playground caps each pane at **100,000 characters**, and the environment plus all
+thirteen scenarios is 133,000 *with every comment already stripped*. It does not
+fit however it is arranged — this is a tool limit, not a packaging choice.
+
+So `make playground` does two things about it:
+
+1. **Strips comments** from the generated bundle. The sources are 43% comment by
+   volume, deliberately, because the reasoning is the point — but a paste is a
+   transient artifact for one tool, so it is the artifact that gives way. File
+   boundary markers survive, because a Xcelium error at line 2,847 is otherwise
+   unlocatable. `verilator` pragmas survive, because they are directives rather
+   than comments. `scripts/strip_comments.py` is a character-level state machine,
+   not a regex: a `//` inside a string literal is not a comment, and comment
+   removal that is 99% right produces source that compiles and means something
+   else.
+2. **Fails loudly** if a pane still exceeds the limit, naming the file and the
+   count. A generated bundle that is silently 4 KB too big is a wasted trip to
+   the browser.
+
+The split is by what the tests are *about*, so it means something:
+
+| Bundle | Covers |
+|---|---|
+| `proto` | reset, AW/W ordering, decode, alignment, byte enables, back-to-back |
+| `reg` | strobe rule, error precedence, `INT_STATUS`, `STATUS`, `COUNTER` |
+| `ral` | `hw_reset` + `bit_bash` + explicit access-policy checks |
+| `rand` | memory, backpressure, then eight random seeds |
+
+All four share a **single design pane** — paste it once and leave it.
+
+`scripts/testlist.yaml` marks those four `runner: imported`. The regression
 runner cannot launch them; it reads their **logs** instead, dropped into
 `sim/logs/` by `make import-log`, and parses them with exactly the same code it
 uses on a run it launched itself.
@@ -105,7 +137,7 @@ running tests by hand.
   ok   sanity_rand_tb               7     897/897     0.8s
   --   axi_regression_test                      -        -
        not run yet -- make playground PLAY=sys, paste, run, then
-       make import-log LOG=sim/logs/sys.log TEST=axi_regression_test
+       make import-log LOG=sim/logs/proto.log TEST=axi_protocol_test
 
   16 runs in 11.6s: 3 MISSING, 13 PASS
   9044/9044 checks passed

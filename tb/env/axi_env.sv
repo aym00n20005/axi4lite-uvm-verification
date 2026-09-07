@@ -23,10 +23,19 @@ class axi_env extends uvm_env;
     // addresses is one more thing whose mirror can be wrong without
     // anyone looking. axi_ral_test sets "use_ral".
     //------------------------------------------------------------------
-    axi_reg_block                       regmodel;
-    axi_reg_adapter                     adapter;
+    // Guarded by `AXI_RAL, which only the RAL bundle defines.
+    //
+    // Not an optimisation for its own sake: EDA Playground caps a pane
+    // at 100,000 characters, and the RAL model and adapter are 8,700 of
+    // them. Three of the four bundles have no register model in them at
+    // all, so declaring handles of types they do not include would not
+    // elaborate.
+`ifdef AXI_RAL
+    axi_reg_block                        regmodel;
+    axi_reg_adapter                      adapter;
     uvm_reg_predictor #(axi_transaction) predictor;
-    bit                                 use_ral = 0;
+`endif
+    bit                                  use_ral = 0;
 
     function new(string name, uvm_component parent);
         super.new(name, parent);
@@ -39,6 +48,7 @@ class axi_env extends uvm_env;
         cov   = axi_coverage    ::type_id::create("cov", this);
 
         void'(uvm_config_db #(bit)::get(this, "", "use_ral", use_ral));
+`ifdef AXI_RAL
         if (use_ral) begin
             regmodel = axi_reg_block::type_id::create("regmodel");
             regmodel.build();
@@ -46,6 +56,11 @@ class axi_env extends uvm_env;
             adapter   = axi_reg_adapter::type_id::create("adapter");
             predictor = uvm_reg_predictor #(axi_transaction)::type_id::create("predictor", this);
         end
+`else
+        if (use_ral)
+            `uvm_fatal(get_type_name(),
+                "use_ral is set but this build has no register model -- the bundle must define AXI_RAL")
+`endif
     endfunction
 
     // Bottom-up: the agent and its monitor already exist.
@@ -57,6 +72,7 @@ class axi_env extends uvm_env;
         // not on ap -- see axi_monitor.sv's reset_watch.
         agent.mon.rst_ap.connect(cov.rst_export);
 
+`ifdef AXI_RAL
         if (use_ral) begin
             // Frontdoor: RAL sequences go through the same sequencer,
             // driver and pins as everything else. No backdoor is
@@ -74,6 +90,7 @@ class axi_env extends uvm_env;
             predictor.adapter = adapter;
             agent.mon.ap.connect(predictor.bus_in);
         end
+`endif
     endfunction
 
 endclass : axi_env

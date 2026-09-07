@@ -1,411 +1,19 @@
 //======================================================================
-// axi_seqs.sv  --  sequences
+// axi_seqs.sv  --  random, memory and backpressure sequences
 //
-// item_done() fires on acceptance, so finish_item() returns BEFORE the
-// transaction has completed on the bus. A sequence that needs the result
-// waits on the handle it already owns:
+// Split from axi_base_seq.sv because EDA Playground caps a pane at
+// 100,000 characters and the whole environment does not fit in one.
+// Every bundle needs the base class; only some need these.
 //
-//     finish_item(t);
-//     wait (t.completed == 1'b1);
+// axi_backpressure_seq lives here rather than with the protocol
+// sequences for the same reason, and it is not an unnatural home:
+// backpressure is a stress property, it is what sanity_rand_tb exists
+// to generate locally, and the two cover points it owns
+// (c_write_backpressure, c_read_backpressure) are random-traffic ones.
 //
-// That is deliberate. Blocking inside finish_item would serialise reads
-// behind writes and make F24 unobservable -- see docs/uvm_agent_design.md section 2.
-// The formal alternative (put_response / get_response) arrives with the
-// scoreboard; this is the same information with less plumbing.
+// NOT independently compilable -- see tb/agent/axi_transaction.sv.
 //======================================================================
 
-// Register offsets, spec section 5
-`define A_CTRL       32'h0000_0000
-`define A_STATUS     32'h0000_0004
-`define A_INT_ENABLE 32'h0000_000C
-`define A_CONFIG     32'h0000_0008
-`define A_INT_STATUS 32'h0000_0010
-`define A_COUNTER    32'h0000_0018
-`define A_SCRATCH    32'h0000_0014
-`define A_ID         32'h0000_001C
-
-
-virtual class axi_base_seq extends uvm_sequence #(axi_transaction);
-
-    // What this sequence ISSUED. The monitor independently counts what it
-    // SAW on the pins. Comparing the two is the check that the monitor is
-    // reconstructing rather than echoing -- two counts with no shared path.
-    int unsigned issued_writes = 0;
-    int unsigned issued_reads  = 0;
-
-    // Set by the test. 0 means "leave the stream alone".
-    int unsigned seed = 0;
-
-    function new(string name = "axi_base_seq");
-        super.new(name);
-    endfunction
-
-    //------------------------------------------------------------------
-    // Seeding.
-    //
-    // process::self().srandom(), not this.srandom(). IEEE 1800-2017
-    // section 18.14.2: an object created with new() takes its RNG from
-    // the THREAD that called new, not from the enclosing object. Every
-    // transaction below is created inside body(), which runs in this
-    // sequence's own process -- so seeding the process is what makes the
-    // whole stream reproducible, and seeding the object would not.
-    //
-    // Xcelium reports "SVSEED default: 1" and Playground's fixed command
-    // line cannot change it, so without this every run of a test is
-    // byte-identical (docs/tooling_notes.md, 19 Aug). Excellent for
-    // debugging a failure; useless for a regression, which is many seeds
-    // of one test.
-    //
-    // pre_body rather than body so that no subclass has to remember: it
-    // is called automatically by start() unless call_pre_post is 0.
-    //------------------------------------------------------------------
-    task pre_body();
-        if (seed != 0) begin
-            process::self().srandom(seed);
-            `uvm_info(get_type_name(), $sformatf("seeded with %0d", seed), UVM_LOW)
-        end
-    endtask
-
-    //------------------------------------------------------------------
-    // Self-checking, in the base so every sequence counts the same way
-    // and axi_regression_test can total them.
-    //
-    // These are the SEQUENCE's own expectations, and they are not the
-    // scoreboard. The scoreboard checks every transaction against a
-    // spec-derived model fed by the monitor; a directed sequence checks
-    // the specific thing it was written to demonstrate, in the words of
-    // the spec paragraph it came from. When both are right they agree;
-    // when they disagree, having two independent statements is the whole
-    // point.
-    //------------------------------------------------------------------
-    int unsigned checks = 0;
-    int unsigned errors = 0;
-
-    function void check(string what, bit [31:0] got, bit [31:0] exp);
-        checks++;
-        if (got === exp)
-            `uvm_info(get_type_name(), $sformatf("  PASS  %-42s 0x%08h", what, got), UVM_LOW)
-        else begin
-            errors++;
-            `uvm_error(get_type_name(), $sformatf("  FAIL  %-42s 0x%08h (expected 0x%08h)",
-                                                  what, got, exp))
-        end
-    endfunction
-
-    function void check_true(string what, bit ok, bit [31:0] got);
-        checks++;
-        if (ok)
-            `uvm_info(get_type_name(), $sformatf("  PASS  %-42s 0x%08h", what, got), UVM_LOW)
-        else begin
-            errors++;
-            `uvm_error(get_type_name(), $sformatf("  FAIL  %-42s 0x%08h", what, got))
-        end
-    endfunction
-
-    function void section(string title);
-        `uvm_info(get_type_name(), $sformatf("---- %s ----", title), UVM_LOW)
-    endfunction
-
-    // Blocking write. Returns the response once the B handshake is done.
-    task write(input bit [31:0] addr, input bit [31:0] data,
-               input bit [3:0] strb, output bit [1:0] resp,
-               input int aw_d = -1, input int w_d = -1);
-        axi_transaction t;
-        t = axi_transaction::type_id::create("wr");
-        start_item(t);
-        // The distribution constraints are soft, so pinning fields here
-        // steers the transaction instead of contradicting it.
-        if (!t.randomize() with {
-                kind       == AXI_WRITE;
-                addr       == local::addr;
-                data       == local::data;
-                strb       == local::strb;
-                misaligned == (local::addr[1:0] != 2'b00);
-                (local::aw_d >= 0) -> aw_delay == local::aw_d;
-                (local::w_d  >= 0) -> w_delay  == local::w_d;
-            })
-            `uvm_error(get_type_name(), $sformatf("write randomize failed addr=0x%08h", addr))
-        `uvm_info(get_type_name(),
-                  $sformatf("write  addr=0x%08h data=0x%08h strb=%04b -- issued",
-                            addr, data, strb), UVM_HIGH)
-        finish_item(t);
-        // completed goes high on an abort too -- reset cannot produce the
-        // B response this would otherwise wait forever for. See
-        // axi_transaction::aborted.
-        wait (t.completed == 1'b1);
-        issued_writes++;
-        resp = t.resp;
-    endtask
-
-    // Blocking read.
-    task read(input bit [31:0] addr, output bit [31:0] data, output bit [1:0] resp);
-        axi_transaction t;
-        t = axi_transaction::type_id::create("rd");
-        start_item(t);
-        if (!t.randomize() with {
-                kind       == AXI_READ;
-                addr       == local::addr;
-                misaligned == (local::addr[1:0] != 2'b00);
-            })
-            `uvm_error(get_type_name(), $sformatf("read randomize failed addr=0x%08h", addr))
-        finish_item(t);
-        wait (t.completed == 1'b1);
-        issued_reads++;
-        data = t.rdata;
-        resp = t.resp;
-    endtask
-
-    //------------------------------------------------------------------
-    // Non-blocking issue.
-    //
-    // finish_item() returns as soon as the DRIVER accepts the transaction
-    // (item_done fires on acceptance -- docs/uvm_agent_design.md section 2),
-    // so returning here without waiting on t.completed leaves the previous
-    // transaction still on the bus. That is what produces back-to-back
-    // traffic, and it is the only way c_b2b_write and c_b2b_read can ever
-    // be covered.
-    //
-    // The caller keeps the handle and waits later.
-    //------------------------------------------------------------------
-    task issue_nb(axi_transaction t);
-        start_item(t);
-        finish_item(t);
-        if (t.kind == AXI_WRITE) issued_writes++;
-        else                     issued_reads++;
-    endtask
-
-endclass
-
-
-//======================================================================
-// The smoke sequence.
-//
-// Deliberately mirrors sanity_tb.sv, so a failure here can be compared
-// against a bench that is known to pass on the same RTL. When the UVM
-// environment first touches pins, "is it the DUT or is it me?" is the
-// only question worth being able to answer quickly.
-//======================================================================
-class axi_smoke_seq extends axi_base_seq;
-
-    `uvm_object_utils(axi_smoke_seq)
-
-    function new(string name = "axi_smoke_seq");
-        super.new(name);
-    endfunction
-
-    task body();
-        bit [31:0] d;
-        bit [1:0]  r;
-
-        `uvm_info("SMOKE", "---- constants and reset values (spec section 5) ----", UVM_LOW)
-        read(`A_ID, d, r);
-        check("ID reads 0xDEADBEEF",        d, 32'hDEAD_BEEF);
-        check("ID response OKAY",  {30'b0, r}, 32'h0);
-
-        read(`A_CONFIG, d, r);
-        check("CONFIG reset 0x000000FF",    d, 32'h0000_00FF);
-
-        `uvm_info("SMOKE", "---- write / readback, AW and W same cycle ----", UVM_LOW)
-        write(`A_SCRATCH, 32'hDEAD_C0DE, 4'b1111, r, 0, 0);
-        check("SCRATCH write OKAY", {30'b0, r}, 32'h0);
-        read(`A_SCRATCH, d, r);
-        check("SCRATCH reads back",         d, 32'hDEAD_C0DE);
-
-        // The ordering a lockstep driver can never produce. If the two
-        // fork threads are genuinely independent, this works and
-        // c_w_before_aw is covered; if they are not, it deadlocks.
-        `uvm_info("SMOKE", "---- W accepted 4 cycles BEFORE AW (F03) ----", UVM_LOW)
-        write(`A_SCRATCH, 32'h1234_5678, 4'b1111, r, 4, 0);
-        check("W-before-AW OKAY",   {30'b0, r}, 32'h0);
-        read(`A_SCRATCH, d, r);
-        check("W-before-AW landed",         d, 32'h1234_5678);
-
-        `uvm_info("SMOKE", "---- AW accepted 4 cycles BEFORE W (F03) ----", UVM_LOW)
-        write(`A_SCRATCH, 32'h0F0F_0F0F, 4'b1111, r, 0, 4);
-        check("AW-before-W OKAY",   {30'b0, r}, 32'h0);
-        read(`A_SCRATCH, d, r);
-        check("AW-before-W landed",         d, 32'h0F0F_0F0F);
-
-        `uvm_info("SMOKE", "---- reserved bits read 0 (F13) ----", UVM_LOW)
-        write(`A_CONFIG, 32'hFFFF_FFFF, 4'b1111, r, 0, 0);
-        read(`A_CONFIG, d, r);
-        check("CONFIG masks to 0x000000FF", d, 32'h0000_00FF);
-
-        `uvm_info("SMOKE", "---- partial-strobe register write (F16) ----", UVM_LOW)
-        write(`A_SCRATCH, 32'hAAAA_AAAA, 4'b0011, r, 0, 0);
-        check("partial strobe SLVERR", {30'b0, r}, 32'h2);
-        read(`A_SCRATCH, d, r);
-        check("register unchanged",         d, 32'h0F0F_0F0F);
-        read(`A_INT_STATUS, d, r);
-        check("INT_STATUS[2] set",          d, 32'h0000_0004);
-
-        `uvm_info("SMOKE", "---- unimplemented offset 0x100 (F19) ----", UVM_LOW)
-        write(32'h0000_0100, 32'hFFFF_FFFF, 4'b1111, r, 0, 0);
-        check("offset 0x100 SLVERR",  {30'b0, r}, 32'h2);
-        read(`A_CTRL, d, r);
-        check("CTRL not aliased",           d, 32'h0000_0000);
-
-        `uvm_info("SMOKE", "---- misaligned access (F20) ----", UVM_LOW)
-        read(32'h0000_0006, d, r);
-        check("misaligned read SLVERR", {30'b0, r}, 32'h2);
-        check("RDATA zeroed on error",      d, 32'h0000_0000);
-
-        //--------------------------------------------------------------
-        // STATUS.error, and the v0.3 transparency rule (decision D1).
-        //
-        // Spec section 5 as clarified in v0.3: error is set by the last
-        // completed register transaction, and a read of STATUS is
-        // TRANSPARENT -- it does not update the bit. That clarification
-        // was made by this project on 14 Aug to resolve a contradiction
-        // in v0.2, has been implemented in RTL and in the scoreboard
-        // since, and until now nothing has ever exercised it.
-        //
-        // The misaligned read above left error set. Only bit [1] is
-        // checked: STATUS[0] is busy, which is cycle-level state.
-        //--------------------------------------------------------------
-        `uvm_info("SMOKE", "---- STATUS.error transparency (F25, spec v0.3 D1) ----", UVM_LOW)
-
-        read(`A_STATUS, d, r);
-        check("STATUS.error set after SLVERR", d & 32'h2, 32'h2);
-
-        // The whole point of D1: reading it again must NOT have cleared it.
-        // Under the literal v0.2 wording the first read would have cleared
-        // the bit and this would return 0.
-        read(`A_STATUS, d, r);
-        check("STATUS read is transparent",    d & 32'h2, 32'h2);
-
-        // Any other transaction completing with OKAY does clear it.
-        write(`A_SCRATCH, 32'h5A5A_5A5A, 4'b1111, r, 0, 0);
-        read(`A_STATUS, d, r);
-        check("STATUS.error cleared by OKAY",  d & 32'h2, 32'h0);
-
-        //--------------------------------------------------------------
-        // COUNTER is free-running, so the scoreboard cannot predict its
-        // value and skips the data comparison. Reading it here is what
-        // exercises that skip path -- otherwise the mask logic is code
-        // no test has ever executed. The RESPONSE is still checked.
-        //--------------------------------------------------------------
-        `uvm_info("SMOKE", "---- COUNTER read: response checked, data unpredictable ----", UVM_LOW)
-
-        // Enable it first. Read with enable clear and COUNTER returns 0,
-        // which is trivially predictable -- the skip would execute while
-        // proving nothing. Spec section 5: COUNTER increments every clock
-        // while CTRL.enable, so once running its value depends on cycles
-        // the scoreboard cannot see.
-        write(`A_CTRL, 32'h0000_0001, 4'b1111, r, 0, 0);
-        check("CTRL enable write OKAY", {30'b0, r}, 32'h0);
-
-        // CTRL[1] reset_stats always reads 0 (spec section 5, v0.3 D2),
-        // so a CTRL read after enabling returns exactly 1.
-        read(`A_CTRL, d, r);
-        check("CTRL reads enable=1, reset_stats=0", d, 32'h0000_0001);
-
-        read(`A_COUNTER, d, r);
-        check("COUNTER read OKAY",      {30'b0, r}, 32'h0);
-        `uvm_info("SMOKE",
-                  $sformatf("  COUNTER read 0x%08h -- nonzero and cycle-dependent; scoreboard skips it", d),
-                  UVM_LOW)
-
-        //--------------------------------------------------------------
-        // Coverage closure for the bins a directed test can reach.
-        //
-        // Added 21 Aug after the first real coverage measurement showed
-        // cg_wstrb at 2/16, cg_alignment at 2/4 and cg_register_offset at
-        // 7/8. None of those were design gaps -- they were transactions
-        // nobody had written. The measurement is what turned them from
-        // invisible into a work item.
-        //
-        // In September these become axi_wstrb_test and axi_align_test as
-        // the verification plan's test list lays them out; one sequence
-        // is right while there is one test.
-        //--------------------------------------------------------------
-        // F26, and the section 9 obligation BUG-006 sits on.
-        //
-        // COUNTER is free-running and normally unpredictable. In ONE
-        // state it is not: after reset_stats with enable clear it is 0
-        // and frozen, so every read must return exactly 0. That is the
-        // only window in which this bug is visible, and it is why spec
-        // section 9 assigns BUG-006 to a directed test.
-        //
-        // The scoreboard now models the same window, so the bug is caught
-        // twice over -- by the check below and by the reference model.
-        //--------------------------------------------------------------
-        `uvm_info("SMOKE", "---- reset_stats clears COUNTER (F26, BUG-006) ----", UVM_LOW)
-
-        // enable is still 1 from the section above, so the counter has
-        // been running. Clear it AND stop it in one write: reset_stats
-        // has priority over increment (spec section 5).
-        write(`A_CTRL, 32'h0000_0002, 4'b1111, r, 0, 0);
-        check("CTRL reset_stats write OKAY", {30'b0, r}, 32'h0);
-
-        read(`A_COUNTER, d, r);
-        check("reset_stats cleared COUNTER",      d, 32'h0000_0000);
-
-        // Still 0 several transactions later: enable is clear, so it is
-        // frozen rather than merely passing through zero.
-        //
-        // Note what the failure looks like -- the CTRL=0x2 write clears
-        // enable too, so a COUNTER that reset_stats failed to clear
-        // freezes at its old value rather than climbing. Measured under
-        // BUG-006 on 27 Aug: 0x15 on both reads, not a rising count.
-        read(`A_SCRATCH, d, r);
-        read(`A_COUNTER, d, r);
-        check("COUNTER frozen while disabled",    d, 32'h0000_0000);
-
-        // enable and reset_stats together: result is 0 on that cycle, and
-        // enable survives (spec section 5 -- the two bits are
-        // independently testable).
-        write(`A_CTRL, 32'h0000_0003, 4'b1111, r, 0, 0);
-        read(`A_CTRL, d, r);
-        check("reset_stats did not disturb enable", d, 32'h0000_0001);
-
-        //--------------------------------------------------------------
-        `uvm_info("SMOKE", "---- WSTRB sweep, all 16 patterns (F16, cg_wstrb) ----", UVM_LOW)
-
-        // Spec section 5: only 4'b1111 is a legal register write. The
-        // other fifteen must every one return SLVERR and change nothing,
-        // which is fifteen checks of the same rule from fifteen angles.
-        for (int unsigned i = 0; i < 16; i++) begin
-            bit [3:0] sweep_strb = i[3:0];
-            write(`A_SCRATCH, 32'hC0DE_0000 | i, sweep_strb, r, 0, 0);
-            if (sweep_strb == 4'b1111)
-                check($sformatf("WSTRB=%04b OKAY", sweep_strb),   {30'b0, r}, 32'h0);
-            else
-                check($sformatf("WSTRB=%04b SLVERR", sweep_strb), {30'b0, r}, 32'h2);
-        end
-
-        // 4'b1111 is the last pattern swept, so it is the one that landed.
-        read(`A_SCRATCH, d, r);
-        check("only the full-strobe write took effect", d, 32'hC0DE_000F);
-
-        //--------------------------------------------------------------
-        `uvm_info("SMOKE", "---- remaining alignment offsets (F20, cg_alignment) ----", UVM_LOW)
-
-        // The misaligned read above used offset 2. Offsets 1 and 3 are
-        // the same rule at different byte positions.
-        read(32'h0000_0005, d, r);
-        check("addr offset 1 -> SLVERR", {30'b0, r}, 32'h2);
-        read(32'h0000_0007, d, r);
-        check("addr offset 3 -> SLVERR", {30'b0, r}, 32'h2);
-
-        //--------------------------------------------------------------
-        `uvm_info("SMOKE", "---- INT_ENABLE, the last untouched register ----", UVM_LOW)
-
-        // Implemented bits [3:0] (spec section 5), so the upper bits are
-        // reserved and must read 0 -- F13 again, on the one register no
-        // test had ever addressed.
-        write(`A_INT_ENABLE, 32'hFFFF_FFFF, 4'b1111, r, 0, 0);
-        check("INT_ENABLE write OKAY", {30'b0, r}, 32'h0);
-        read(`A_INT_ENABLE, d, r);
-        check("INT_ENABLE masks to 0xF", d, 32'h0000_000F);
-
-        if (errors == 0)
-            `uvm_info("SMOKE", $sformatf("all %0d checks passed", checks), UVM_LOW)
-        else
-            `uvm_error("SMOKE", $sformatf("%0d of %0d checks FAILED", errors, checks))
-    endtask
-
-endclass : axi_smoke_seq
 
 
 //======================================================================
@@ -626,3 +234,93 @@ class axi_mem_seq extends axi_base_seq;
     endtask
 
 endclass : axi_mem_seq
+
+//======================================================================
+class axi_backpressure_seq extends axi_base_seq;
+
+    `uvm_object_utils(axi_backpressure_seq)
+
+    function new(string name = "axi_backpressure_seq");
+        super.new(name);
+    endfunction
+
+    task slow_write(bit [31:0] addr, bit [31:0] data, int b_delay);
+        axi_transaction t = axi_transaction::type_id::create("bp_wr");
+        if (!t.randomize() with {
+                kind == AXI_WRITE; addr == local::addr; data == local::data;
+                strb == 4'b1111; misaligned == 0;
+                aw_delay == 0; w_delay == 0; b_ready_delay == local::b_delay;
+            })
+            `uvm_error(get_type_name(), "backpressure write randomize failed")
+        issue_nb(t);
+        wait (t.completed == 1'b1);
+    endtask
+
+    task slow_read(bit [31:0] addr, int r_delay, output bit [31:0] data, output bit [1:0] resp);
+        axi_transaction t = axi_transaction::type_id::create("bp_rd");
+        if (!t.randomize() with {
+                kind == AXI_READ; addr == local::addr; misaligned == 0;
+                ar_delay == 0; r_ready_delay == local::r_delay;
+            })
+            `uvm_error(get_type_name(), "backpressure read randomize failed")
+        issue_nb(t);
+        wait (t.completed == 1'b1);
+        data = t.rdata;
+        resp = t.resp;
+    endtask
+
+    // vplan section 5's bin edges again: 0, 1-3, 4-10, >10. Declared
+    // ahead of body(), which uses it -- a class property referenced
+    // above its own declaration is accepted by some tools and rejected
+    // by a conformant front end.
+    int delays [6] = '{0, 2, 5, 9, 14, 20};
+
+    task body();
+        bit [31:0] d;
+        bit [1:0]  r;
+
+        section("F28 -- responses held for a long time, register slave");
+
+        foreach (delays[i]) begin
+            slow_write(`A_SCRATCH, 32'hBEEF_0000 + i, delays[i]);
+            slow_read(`A_SCRATCH, delays[i], d, r);
+            check($sformatf("BREADY/RREADY held %0d cycles", delays[i]),
+                  d, 32'hBEEF_0000 + i);
+        end
+
+        section("F28 -- and through the interconnect to memory");
+
+        foreach (delays[i]) begin
+            slow_write(`M_WORD(20 + i), 32'hFACE_0000 + i, delays[i]);
+            slow_read(`M_WORD(20 + i), delays[i], d, r);
+            check($sformatf("memory, READY held %0d cycles", delays[i]),
+                  d, 32'hFACE_0000 + i);
+        end
+
+        section("F28 -- an error response is held just as long");
+
+        // The response the master is slow to take is a DECERR this time.
+        // The interconnect must hold it exactly as a slave holds a
+        // normal one -- it is a slave to the master here.
+        slow_read(`A_GAP_FIRST, 18, d, r);
+        check("DECERR survived 18 cycles of RREADY low", {30'b0, r}, {30'b0, SEQ_DECERR});
+        check("  RDATA still 0",                          d, 32'h0);
+    endtask
+
+endclass : axi_backpressure_seq
+
+
+//======================================================================
+// F29 / F08 -- back-to-back transactions
+//
+// Zero gap between consecutive transactions, which is the only stimulus
+// that reaches c_b2b_write and c_b2b_read: they cover an accept landing
+// on the cycle AFTER a response handshake completes, and a sequence that
+// waits for each transaction before issuing the next can never produce
+// one.
+//
+// F08, single-outstanding, is checked at the same time and by the same
+// stimulus: this is exactly the traffic that would break it, and
+// a_single_outstanding_write and a_single_outstanding_read are bound and
+// watching. The sequence's own job is to confirm nothing was lost or
+// reordered.

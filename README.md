@@ -195,7 +195,7 @@ make all          # everything that needs no person
 | `make vplan` | Feature → test → result matrix |
 | `make formal` | Bounded model check |
 | `make regmap` | `regmap.yaml` → RTL package + RAL + docs |
-| `make playground PLAY=sys` | Bundle the UVM environment for EDA Playground |
+| `make playground PLAY=proto` | Bundle the UVM environment for EDA Playground (`proto` \| `reg` \| `ral` \| `rand`) |
 | `make import-log LOG=…` | Bring a Playground log back in |
 
 **There is exactly one manual step in the whole flow, and it is a property of the
@@ -204,11 +204,20 @@ have no UVM support, so the environment runs on Xcelium via EDA Playground —
 two panes, pasted by hand.
 
 Everything is built around minimising that. The thirteen directed scenarios are
-written as **sequences** with thin test wrappers, so all fifteen run inside one
+written as **sequences** with thin test wrappers, so many run inside one
 simulation; the seed arrives as a define because Playground's command line is
-fixed; and eight random seeds run inside a single job. **Sixteen tests and eight
-seeds cost three pastes** — and `make elab` means none of them is ever spent on a
-typo.
+fixed; and eight random seeds run inside a single job.
+
+Playground also caps each pane at **100,000 characters**. The environment plus
+all thirteen scenarios is 133,000 with every comment already stripped, so it
+cannot fit however it is arranged. The bundles are therefore split by what the
+tests are *about* — protocol/decode, register semantics, RAL, random — which at
+least makes the split mean something. `make playground` strips comments from the
+generated bundle and **fails loudly** if a pane still exceeds the limit, so this
+can never regress silently.
+
+**Sixteen tests and eight seeds cost four pastes, sharing one design pane** — and
+`make elab` means none of the four is ever spent on a typo.
 
 ## Key design decisions
 
@@ -256,9 +265,10 @@ disagreed with the parser about time normalisation (the parser was right).
 │   ├── interface/                 axi4lite_if.sv + protocol checker, 3 binds
 │   ├── agent/                     transaction, sequencer, driver, monitor, agent
 │   ├── ral/                       axi_reg_block.sv (GENERATED) + adapter
-│   ├── sequences/                 base, smoke, random, memory + 13 directed
+│   ├── sequences/                 base, smoke, random, memory + 13 directed,
+│   │                              split to fit Playground's pane limit
 │   ├── env/                       env, scoreboard, coverage collector
-│   ├── tests/                     16 tests + regression + multiseed + 3 tops
+│   ├── tests/                     16 tests + 4 grouped runners + 3 tops
 │   └── sanity_*.sv                4 non-UVM benches, incl. seeded random
 ├── formal/                        BMC properties + the Yosys/z3 flow
 ├── scripts/                       the toolkit: T1–T6, A1, elab, regmap

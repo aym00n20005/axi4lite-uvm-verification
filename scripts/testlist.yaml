@@ -20,6 +20,12 @@
 #                     dropped into sim/logs/ by `make import-log` -- and
 #                     treats it exactly like a run it launched itself.
 #
+#                     There are FOUR of them rather than one because
+#                     Playground caps a pane at 100,000 characters and
+#                     the environment plus all thirteen scenarios is
+#                     133,000 with every comment stripped. See the
+#                     Makefile's bundle definitions.
+#
 # That second kind is not a workaround, it is the honest description of
 # a flow with a manual step in it. Everything after the log is
 # automated; the log is where a person is required, and the file says so
@@ -76,17 +82,29 @@ tests:
   #-------------------------------------------------------------------
   # UVM. Run by hand on EDA Playground; imported from sim/logs/.
   #-------------------------------------------------------------------
-  - name:     axi_regression_test
+  - name:     axi_protocol_test
     runner:   imported
-    log:      sim/logs/sys.log
-    bundle:   sys
+    log:      sim/logs/proto.log
+    bundle:   proto
     expect:   pass
-    features: [F01, F02, F03, F08, F09, F14, F15, F16, F17, F18, F19,
-               F20, F21, F22, F23, F24, F25, F26, F27, F28, F29]
+    features: [F01, F02, F03, F04, F05, F06, F07, F08, F09, F15, F17,
+               F18, F19, F20]
     why: >-
-      All fifteen directed sequences in one simulation, against the
-      interconnect and both slaves, with the spec-derived scoreboard and
-      the functional coverage model live.
+      Protocol and decode, one simulation, against the interconnect and
+      both slaves: reset, AW/W ordering, routing, alignment, byte enables
+      and back-to-back, with the spec-derived scoreboard and the
+      functional coverage model live.
+
+  - name:     axi_register_test
+    runner:   imported
+    log:      sim/logs/reg.log
+    bundle:   reg
+    expect:   pass
+    features: [F16, F21, F22, F23, F24, F25, F26, F27]
+    why: >-
+      Register semantics: the strobe rule, error precedence, INT_STATUS
+      events and W1C, STATUS.busy and .error, and COUNTER through its
+      65,536-cycle wrap. F24 and F27 are reachable nowhere else.
 
   - name:     axi_ral_test
     runner:   imported
@@ -105,4 +123,6 @@ tests:
     bundle:   rand
     expect:   pass
     features: [F01, F02, F03, F14, F28, F29]
-    why:      "Eight seeds of constrained-random traffic in one simulation."
+    why: >-
+      Memory and backpressure once, then eight seeds of
+      constrained-random traffic, all in one simulation.

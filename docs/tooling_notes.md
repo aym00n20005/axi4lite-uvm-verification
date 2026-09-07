@@ -289,6 +289,13 @@ bundle by `make playground PLAY=x SEED=n`, and the sequence seeds its own
 process with it. `axi_multiseed_test` runs eight seeds inside one simulation,
 because Playground cannot launch eight runs either.
 
+**And each pane is capped at 100,000 characters.** The environment plus all
+thirteen directed scenarios is 133,000 with every comment stripped, so it does
+not fit however it is arranged. `make playground` strips comments from the
+generated bundle and splits the tests across four bundles by subject; it fails
+loudly rather than emitting a pane that will be rejected. See
+[regression.md](regression.md).
+
 ---
 
 ## What each tool is used for, in the end

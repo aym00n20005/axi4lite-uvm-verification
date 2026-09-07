@@ -60,9 +60,15 @@ if ! command -v slang >/dev/null 2>&1; then
     exit 2
 fi
 
-# The three system bundles first -- they are the ones that get pasted,
+# The four system bundles first -- they are the ones that get pasted,
 # and a failure in one of them is the one worth seeing at the top.
-ALL_BUNDLES=(sys ral rand hello rand_smoke smoke random mem)
+#
+# Note these are the STRIPPED bundles: `make playground` removes comments
+# to fit EDA Playground's 100,000-character pane limit, so what is
+# elaborated here is byte for byte what gets pasted, comments and all
+# absent. That is the point -- elaborating the unstripped source would
+# leave the stripper itself unchecked.
+ALL_BUNDLES=(proto reg ral rand hello rand_smoke smoke mem)
 if [[ $# -gt 0 ]]; then BUNDLES=("$@"); else BUNDLES=("${ALL_BUNDLES[@]}"); fi
 
 FAILED=0
