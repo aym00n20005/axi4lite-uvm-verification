@@ -36,10 +36,17 @@ import pathlib
 import re
 import sys
 
-# Emitted by the Makefile's playground target. The only comments worth
-# their bytes in a pasted bundle.
-KEEP = re.compile(r"^\s*//=+\s|^\s*//\s{3}\S|^// GENERATED|^// Paste into|"
-                  r"^// Simulator:|^//\s*$|verilator\s+(lint_off|lint_on|coverage)")
+# The bundler's own file-boundary markers. Without them a Xcelium error
+# at line 2,847 is unlocatable -- the line numbers no longer match any
+# file in the repository, and these are the only way back.
+KEEP = re.compile(r"^\s*//=+ |verilator\s+(lint_off|lint_on|coverage)")
+
+# Everything before the first file marker is the bundle's own header:
+# which files it contains, which pane it goes in, which simulator, and
+# the instructions for switching tests. It is a few hundred bytes and it
+# is the only documentation the person pasting has in front of them, so
+# it is preserved verbatim rather than stripped.
+FIRST_MARKER = re.compile(r"^//=+ \S+ =+$", re.M)
 
 
 def strip(text):
@@ -118,7 +125,13 @@ def main():
     src = pathlib.Path(sys.argv[1])
     dst = pathlib.Path(sys.argv[2])
     original = src.read_text()
-    stripped = strip(original)
+
+    m = FIRST_MARKER.search(original)
+    if m:
+        header, body = original[:m.start()], original[m.start():]
+        stripped = header.rstrip() + "\n\n" + strip(body)
+    else:
+        stripped = strip(original)
     dst.write_text(stripped)
     print(f"{len(original):>8,} -> {len(stripped):>8,} chars "
           f"({100 - len(stripped) * 100 // len(original)}% smaller)  {dst}")
