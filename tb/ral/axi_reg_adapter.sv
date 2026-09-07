@@ -63,17 +63,27 @@ class axi_reg_adapter extends uvm_reg_adapter;
     virtual function uvm_sequence_item reg2bus(const ref uvm_reg_bus_op rw);
         axi_transaction t = axi_transaction::type_id::create("ral_item");
 
-        t.kind = (rw.kind == UVM_WRITE) ? AXI_WRITE : AXI_READ;
-        t.addr = rw.addr;
-        t.data = rw.data;
-        t.strb = 4'b1111;                    // see the header
-
-        // Tells the driver to hold item_done until the bus has answered.
-        // provides_responses is 0, so uvm_reg_map reads the status
-        // straight out of this item the moment finish_item returns --
-        // and this driver's item_done fires on acceptance. See
-        // axi_driver::dispatch for the full reasoning.
-        t.from_ral = 1'b1;
+        // Held in PLAIN LOCALS, deliberately, and the names differ from
+        // the transaction's fields on purpose. See BUG-013:
+        //
+        //     addr == local::t.addr        // WRONG -- tautology
+        //
+        // `local::` resolves in the enclosing scope, and in this function
+        // the enclosing scope's `t` IS the object being randomised. So
+        // `local::t.addr` is `t.addr` -- the rand variable itself -- and
+        // the constraint reduces to `addr == addr`, which is always true.
+        // Every RAL access then went out with a RANDOM address and RANDOM
+        // data, and the register model read whatever happened to be
+        // there.
+        //
+        // (axi_base_seq::write() uses `local::addr` correctly: there the
+        // enclosing scope's `addr` is a TASK ARGUMENT, a different object
+        // from the transaction's field, and `local::` is what
+        // disambiguates them. The idiom is right; applying it to the
+        // object itself is not.)
+        axi_kind_e ral_kind = (rw.kind == UVM_WRITE) ? AXI_WRITE : AXI_READ;
+        bit [31:0] ral_addr = rw.addr;
+        bit [31:0] ral_data = rw.data;
 
         // Timing knobs the RAL has no opinion about. Randomising them
         // rather than pinning them to zero keeps RAL traffic from being
@@ -81,14 +91,21 @@ class axi_reg_adapter extends uvm_reg_adapter;
         // and cg_valid_delay and cg_backpressure sample RAL transactions
         // like any other.
         if (!t.randomize() with {
-                kind == local::t.kind;
-                addr == local::t.addr;
-                data == local::t.data;
-                strb == local::t.strb;
-                misaligned == (local::t.addr[1:0] != 2'b00);
+                kind       == ral_kind;
+                addr       == ral_addr;
+                data       == ral_data;
+                strb       == 4'b1111;          // see the header
+                misaligned == 1'b0;             // the RAL only addresses real registers
             })
             `uvm_error("RAL_ADAPTER",
                        $sformatf("could not randomise timing for a RAL access to 0x%08h", rw.addr))
+
+        // Tells the driver to hold item_done until the bus has answered.
+        // provides_responses is 0, so uvm_reg_map reads the status
+        // straight out of this item the moment finish_item returns --
+        // and this driver's item_done fires on acceptance. See
+        // axi_driver::dispatch for the full reasoning.
+        t.from_ral = 1'b1;
         return t;
     endfunction
 

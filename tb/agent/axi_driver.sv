@@ -77,6 +77,19 @@ class axi_driver extends uvm_driver #(axi_transaction);
     int unsigned dispatched_writes = 0;
     int unsigned dispatched_reads  = 0;
 
+    // The transaction each half of the bus is currently working on.
+    //
+    // Draining the mailboxes on reset is NOT enough, and BUG-014 is what
+    // that cost: b_channel does `b_q.get(t)` as its first act, so an
+    // in-flight transaction is no longer in any mailbox -- it is a local
+    // variable inside a thread that `disable fork` is about to destroy.
+    // The sequence then waits on t.completed forever and the watchdog
+    // fires 20 us later.
+    //
+    // Spec section 1 caps outstanding transactions at one read and one
+    // write, so one handle each is enough by construction.
+    axi_transaction cur_write, cur_read;
+
     //==================================================================
     task run_phase(uvm_phase phase);
         drive_idle();
@@ -172,6 +185,22 @@ class axi_driver extends uvm_driver #(axi_transaction);
             aborted_reads++;
         end
 
+        // 2b. And the one each channel had already DEQUEUED. It is not
+        //     in any mailbox -- it is a local inside a thread that has
+        //     just been destroyed -- so draining the queues leaves it
+        //     stranded and its waiter blocked forever. BUG-014.
+        if (cur_write != null && !cur_write.completed) begin
+            cur_write.resp = 2'b00; cur_write.aborted = 1'b1; cur_write.completed = 1'b1;
+            aborted_writes++;
+        end
+        if (cur_read != null && !cur_read.completed) begin
+            cur_read.resp = 2'b00; cur_read.rdata = 32'h0;
+            cur_read.aborted = 1'b1; cur_read.completed = 1'b1;
+            aborted_reads++;
+        end
+        cur_write = null;
+        cur_read  = null;
+
         // 3. Release the slots. main_loop may be blocked inside
         //    dispatch() on one of these, and nothing else will ever
         //    release it -- the b_channel thread that would have is dead.
@@ -204,12 +233,14 @@ class axi_driver extends uvm_driver #(axi_transaction);
         if (t.kind == AXI_WRITE) begin
             write_slot.get(1);
             dispatched_writes++;
+            cur_write = t;
             aw_q.put(t);
             w_q.put(t);
             b_q.put(t);
         end else begin
             read_slot.get(1);
             dispatched_reads++;
+            cur_read = t;
             ar_q.put(t);
             r_q.put(t);
         end
@@ -350,6 +381,7 @@ class axi_driver extends uvm_driver #(axi_transaction);
             t.resp = vif.master_cb.BRESP;
             vif.master_cb.BREADY <= 1'b0;
             t.completed = 1'b1;
+            cur_write   = null;             // nothing left for reset to retire
             write_slot.put(1);              // release the write slot
         end
     endtask
@@ -386,6 +418,7 @@ class axi_driver extends uvm_driver #(axi_transaction);
             t.resp  = vif.master_cb.RRESP;
             vif.master_cb.RREADY <= 1'b0;
             t.completed = 1'b1;
+            cur_read    = null;
             read_slot.put(1);               // release the read slot
         end
     endtask
