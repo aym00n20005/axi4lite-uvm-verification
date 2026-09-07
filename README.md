@@ -45,10 +45,13 @@ declines to claim it. [formal_notes.md](docs/formal_notes.md).
 
 ## What the testbench found
 
-**Ten bugs. Six injected deliberately to prove the environment works — all six
-caught by the mechanism the specification assigned each one, before any of those
-mechanisms existed. Four genuine, and all four in the testbench rather than the
-design.**
+**Fourteen bugs. Six injected deliberately to prove the environment works.
+Eight genuine — and all eight in the testbench rather than the design.**
+
+Of the six injected, **five were caught by the mechanism the specification
+assigned them** in August, before any of those mechanisms existed. The sixth was
+caught by three *other* mechanisms while its assigned one proved structurally
+blind, and that is the more useful result — see below.
 
 - **A cover point that could not fail to be covered.** The property meant to
   prove the driver's threads run independently was satisfied by *any*
@@ -67,12 +70,38 @@ design.**
   came through it. Found by pointing a second, conformant front end at the
   existing sources — in 0.2 seconds.
   ([BUG-010](docs/bug_reports/BUG-010.md))
+- **A constraint that randomised the field it appeared to pin.** `addr ==
+  local::t.addr` — where `t` *is* the object being randomised — reduces to
+  `addr == addr`. Every RAL access went out with a random address and random
+  data; the register model's first real run produced **644 errors against a
+  correct design.** Verified with a standalone experiment: 200 of 200 randomised
+  away. ([BUG-013](docs/bug_reports/BUG-013.md))
+- **A transaction that reset took away and nothing retired.** Draining the
+  channel mailboxes missed the one item a channel thread had already dequeued
+  into a local, which `disable fork` then destroyed. The bus went silent with no
+  assertion and no mismatch to report it; the inactivity watchdog named all five
+  channels and made it a minute's diagnosis.
+  ([BUG-014](docs/bug_reports/BUG-014.md))
+- **Two defects in the reference model itself**, both false positives against a
+  correct DUT: a scoreboard that did not know reset had happened, and one
+  predicting a status field it cannot place in time.
+  ([BUG-011](docs/bug_reports/BUG-011.md),
+  [BUG-012](docs/bug_reports/BUG-012.md))
 - **Two contradictions in the frozen specification**, found while deriving the
   architecture on paper, before any RTL existed. Both fixed in the document
   first. ([dut_spec.md §10](docs/dut_spec.md))
 
-Three results from the injected bugs are worth more than the detections
+Four results from the injected bugs are worth more than the detections
 themselves:
+
+- **The register model could not catch the bug the plan assigned it, and never
+  could.** `uvm_reg_field::configure()` sets `m_check = UVM_NO_CHECK` for any
+  field declared `volatile`, and `uvm_reg_bit_bash_seq` skips every bit whose
+  compare mode is `UVM_NO_CHECK`. `INT_STATUS` **must** be volatile — hardware
+  sets it — so its access policy is invisible to the library sequences.
+  `bit_bash` was silent on the injected DUT *and* on the correct one. **A check
+  that passes on both is not checking.** Found only by running the injection
+  rather than reasoning about it. ([BUG-004](docs/bug_reports/BUG-004.md))
 
 - Injecting a real defect and removing **one stimulus case** left a correct,
   bound assertion silent while **31 of 31 checks passed** on a broken design.
@@ -90,14 +119,15 @@ All measured. Regenerate with `make all`.
 
 | Metric | Value |
 |---|---|
-| **Local regression** | 16 runs, **9,044 checks**, parallel, **12 seconds**. `make regression` |
+| **Local regression** | 17 runs, **9,044 / 9,044 checks**, parallel, **12.0 seconds**. `make regression` |
+| **UVM on Xcelium** | 4 bundles, **0 `UVM_ERROR`**. 2,779 bus responses checked against the reference model, **0 mismatches**. 313 directed checks across `protocol` (235), `register` (60) and `ral` (18), plus 8 seeds of random traffic |
 | **Non-UVM benches** | `sanity_tb` 31 · `sanity_mem_tb` 27 · `sanity_sys_tb` 36 · `sanity_rand_tb` ~890/seed × 10 seeds |
 | **Cover properties** | **14 of 14 non-zero.** Five of them read 0 in every run this project made until the interconnect and the seeded random bench existed — closed locally, under Verilator |
-| **Functional coverage** | 11 groups + 4 crosses, all modelled, sampled from observation. Per-run tables in [coverage_report.md](docs/coverage_report.md) |
+| **Functional coverage** | 11 groups + 4 crosses, all modelled, sampled from observation. **Ten of eleven groups reach 100%**; the eleventh is at its structural maximum (`cg_valid_delay`'s `d0` bin cannot be produced by this driver's shape). Every bin this environment can hit, it hits. [coverage_status.md](docs/coverage_status.md) |
 | **Traceability** | 29 features → test → result, generated from the *specification's* feature list so an unclaimed feature shows as `UNCOVERED`. [traceability.md](docs/traceability.md) |
 | **Formal** | 16 safety properties, PASSED at depth 25 and 40, with a cover pass proving none of them is vacuous |
 | **Elaboration** | 8 UVM bundles, 0 errors, under a second. `make elab` |
-| **Bugs** | 6 injected, all caught by their assigned mechanism · 4 genuine, all in the testbench. [bug_reports/](docs/bug_reports/) |
+| **Bugs** | 6 injected — 5 caught by their assigned mechanism, 1 caught by three others while its assigned one proved blind · **8 genuine, all eight in the testbench**. [bug_reports/](docs/bug_reports/) |
 | **LLM triage** | **4/6 correct, 2/6 partial, 0/6 wrong** — and the two earlier measurements that were invalid. [llm_triage.md](docs/llm_triage.md) |
 
 **Read the coverage narrowly.** Some cover points are zero at the slave ports and
@@ -189,7 +219,7 @@ make all          # everything that needs no person
 | `make elab` | Elaborate the UVM testbench locally with slang — the same bytes that get pasted |
 | `make lint` | Verilator `-Wall` on the RTL |
 | `make test` | Three directed benches, all assertions live |
-| `make regression` | 16 runs, parallel, multi-seed, `results.json`, non-zero exit |
+| `make regression` | 17 runs, parallel, multi-seed, `results.json`, non-zero exit |
 | `make triage` | Clusters, new-since-last-run, flaky, not-run |
 | `make coverage` | Cover properties per instance + the UVM tally, with a trend |
 | `make vplan` | Feature → test → result matrix |
@@ -218,6 +248,13 @@ can never regress silently.
 
 **Sixteen tests and eight seeds cost four pastes, sharing one design pane** — and
 `make elab` means none of the four is ever spent on a typo.
+
+Its limit is worth stating plainly, because this project hit it: `make elab`
+proves the source is **legal**, not that it is **right**. It caught
+[BUG-010](docs/bug_reports/BUG-010.md) in 0.2 seconds because that constraint was
+ill-typed. It could never have caught [BUG-013](docs/bug_reports/BUG-013.md),
+which is perfectly well-typed and simply means something other than what it
+says.
 
 ## Key design decisions
 
@@ -289,7 +326,7 @@ project explained from zero, including every bug and what it taught.
 | [Coverage status](docs/coverage_status.md) · [measured tables](docs/coverage_report.md) | Justifications by hand; numbers generated |
 | [Formal notes](docs/formal_notes.md) | What was proved, and what Yosys could not read |
 | [LLM triage](docs/llm_triage.md) | The measured hit rate, and two measurements that were invalid |
-| [Bug reports](docs/bug_reports/) | 10, injected and genuine, with a "what caught what" index |
+| [Bug reports](docs/bug_reports/) | 14, injected and genuine, with a "what caught what" index |
 | [Tooling notes](docs/tooling_notes.md) | Six tools, measured capability, not assumed |
 | [Register map](docs/register_map.md) | **Generated** from `scripts/regmap.yaml` |
 | [Interconnect](docs/interconnect_architecture.md) · [register slave](docs/reg_slave_architecture.md) · [memory slave](docs/mem_slave_architecture.md) | Designed on paper before RTL |
