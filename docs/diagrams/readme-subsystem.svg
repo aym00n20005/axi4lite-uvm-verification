@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1040" height="740" viewBox="0 0 1040 740" role="img" aria-labelledby="title desc">
+<title id="title">AXI4-Lite peripheral subsystem</title><desc id="desc">One master, two slaves, independent read and write paths.</desc>
+<defs>
+<marker id="blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#2563eb"/></marker>
+<marker id="teal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#0f766e"/></marker>
+<marker id="purple" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#7c3aed"/></marker>
+<marker id="amber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#b45309"/></marker>
+<marker id="gray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#52627a"/></marker>
+</defs>
+<rect width="1040" height="740" rx="16" fill="#f8fafc"/>
+<text x="32" y="43" font-family="DejaVu Sans, Arial, sans-serif" font-size="27" fill="#16243a" font-weight="700" text-anchor="start">AXI4-Lite peripheral subsystem</text>
+<text x="32" y="72" font-family="DejaVu Sans, Arial, sans-serif" font-size="15" fill="#52627a" font-weight="400" text-anchor="start">One master, two slaves, independent read and write paths.</text>
+<rect x="340" y="105" width="360" height="84" rx="12" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+<text x="520.0" y="135" font-family="DejaVu Sans, Arial, sans-serif" font-size="18" fill="#2563eb" font-weight="700" text-anchor="middle">UVM master agent</text>
+<text x="520.0" y="162" font-family="DejaVu Sans, Arial, sans-serif" font-size="15" fill="#16243a" font-weight="400" text-anchor="middle">32-bit address · 32-bit data</text>
+<path d="M 520 190 V 237" fill="none" stroke="#2563eb" stroke-width="2.4" stroke-linejoin="round" marker-end="url(#blue)" marker-start="url(#blue)"/>
+<text x="540" y="220" font-family="DejaVu Sans, Arial, sans-serif" font-size="14" fill="#52627a" font-weight="400" text-anchor="start">AW / W / B / AR / R</text>
+<rect x="300" y="240" width="440" height="100" rx="12" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+<text x="520.0" y="270" font-family="DejaVu Sans, Arial, sans-serif" font-size="18" fill="#2563eb" font-weight="700" text-anchor="middle">AXI4-Lite interconnect</text>
+<text x="520.0" y="297" font-family="DejaVu Sans, Arial, sans-serif" font-size="15" fill="#16243a" font-weight="400" text-anchor="middle">Range decode + response mux</text>
+<text x="520.0" y="320" font-family="DejaVu Sans, Arial, sans-serif" font-size="15" fill="#16243a" font-weight="400" text-anchor="middle">Holds W data when W arrives before AW</text>
+<path d="M 400 340 V 375 H 195 V 409" fill="none" stroke="#2563eb" stroke-width="2.4" stroke-linejoin="round" marker-end="url(#blue)" marker-start="url(#blue)"/>
+<path d="M 640 340 V 375 H 565 V 409" fill="none" stroke="#2563eb" stroke-width="2.4" stroke-linejoin="round" marker-end="url(#blue)" marker-start="url(#blue)"/>
+<path d="M 740 290 H 875 V 409" fill="none" stroke="#b45309" stroke-width="2.4" stroke-linejoin="round" marker-end="url(#amber)"/>
+<rect x="32" y="412" width="326" height="115" rx="12" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+<text x="195.0" y="442" font-family="DejaVu Sans, Arial, sans-serif" font-size="18" fill="#2563eb" font-weight="700" text-anchor="middle">Register-file slave</text>
+<text x="195.0" y="469" font-family="DejaVu Sans, Arial, sans-serif" font-size="15" fill="#16243a" font-weight="400" text-anchor="middle">8 registers · RW / RO / W1C / WC</text>
+<text x="195.0" y="492" font-family="DejaVu Sans, Arial, sans-serif" font-size="15" fill="#16243a" font-weight="400" text-anchor="middle">4 KB decoded region</text>
+<text x="195.0" y="515" font-family="DejaVu Sans, Arial, sans-serif" font-size="15" fill="#16243a" font-weight="400" text-anchor="middle">Only offsets 0x00–0x1C implemented</text>
+<rect x="384" y="412" width="326" height="115" rx="12" fill="#f0fdfa" stroke="#0f766e" stroke-width="1.5"/>
+<text x="547.0" y="442" font-family="DejaVu Sans, Arial, sans-serif" font-size="18" fill="#0f766e" font-weight="700" text-anchor="middle">Memory slave</text>
+<text x="547.0" y="469" font-family="DejaVu Sans, Arial, sans-serif" font-size="15" fill="#16243a" font-weight="400" text-anchor="middle">1 KB · 256 × 32-bit words</text>
+<text x="547.0" y="492" font-family="DejaVu Sans, Arial, sans-serif" font-size="15" fill="#16243a" font-weight="400" text-anchor="middle">Per-byte WSTRB writes</text>
+<text x="547.0" y="515" font-family="DejaVu Sans, Arial, sans-serif" font-size="15" fill="#16243a" font-weight="400" text-anchor="middle">Reset preserves memory</text>
+<rect x="736" y="412" width="272" height="115" rx="12" fill="#fffbeb" stroke="#b45309" stroke-width="1.5"/>
+<text x="872.0" y="442" font-family="DejaVu Sans, Arial, sans-serif" font-size="18" fill="#b45309" font-weight="700" text-anchor="middle">Unmapped access</text>
+<text x="872.0" y="469" font-family="DejaVu Sans, Arial, sans-serif" font-size="15" fill="#16243a" font-weight="400" text-anchor="middle">DECERR response</text>
+<text x="872.0" y="492" font-family="DejaVu Sans, Arial, sans-serif" font-size="15" fill="#16243a" font-weight="400" text-anchor="middle">No slave selected</text>
+<text x="872.0" y="515" font-family="DejaVu Sans, Arial, sans-serif" font-size="15" fill="#16243a" font-weight="400" text-anchor="middle">Terminated by interconnect</text>
+<text x="32" y="568" font-family="DejaVu Sans, Arial, sans-serif" font-size="14" fill="#52627a" font-weight="700" text-anchor="start">ADDRESS MAP</text>
+<rect x="32" y="586" width="326" height="105" rx="12" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+<text x="48" y="612" font-family="DejaVu Sans, Arial, sans-serif" font-size="17" fill="#2563eb" font-weight="700" text-anchor="start">Register region</text>
+<text x="48" y="640" font-family="DejaVu Sans Mono, monospace" font-size="13" fill="#16243a" font-weight="400" text-anchor="start">0x0000_0000–0x0000_0FFF</text>
+<text x="48" y="670" font-family="DejaVu Sans, Arial, sans-serif" font-size="13" fill="#52627a" font-weight="400" text-anchor="start">Offsets 0x20–0xFFF → SLVERR</text>
+<rect x="384" y="586" width="326" height="105" rx="12" fill="#f0fdfa" stroke="#0f766e" stroke-width="1.5"/>
+<text x="400" y="612" font-family="DejaVu Sans, Arial, sans-serif" font-size="17" fill="#0f766e" font-weight="700" text-anchor="start">Memory region</text>
+<text x="400" y="640" font-family="DejaVu Sans Mono, monospace" font-size="13" fill="#16243a" font-weight="400" text-anchor="start">0x0000_1000–0x0000_13FF</text>
+<text x="400" y="670" font-family="DejaVu Sans, Arial, sans-serif" font-size="13" fill="#52627a" font-weight="400" text-anchor="start">All 256 words implemented</text>
+<rect x="736" y="586" width="272" height="105" rx="12" fill="#fffbeb" stroke="#b45309" stroke-width="1.5"/>
+<text x="752" y="612" font-family="DejaVu Sans, Arial, sans-serif" font-size="17" fill="#b45309" font-weight="700" text-anchor="start">Unmapped region</text>
+<text x="752" y="640" font-family="DejaVu Sans Mono, monospace" font-size="13" fill="#16243a" font-weight="400" text-anchor="start">0x0000_1400–0xFFFF_FFFF</text>
+<text x="752" y="670" font-family="DejaVu Sans, Arial, sans-serif" font-size="13" fill="#52627a" font-weight="400" text-anchor="start">Includes the 0x1400–0x1FFF gap</text>
+<text x="32" y="720" font-family="DejaVu Sans, Arial, sans-serif" font-size="13" fill="#52627a" font-weight="400" text-anchor="start">Address regions are not to scale. Bidirectional links include requests and responses.</text>
+</svg>

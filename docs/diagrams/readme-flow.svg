@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1040" height="710" viewBox="0 0 1040 710" role="img" aria-labelledby="title desc">
+<title id="title">Verification flow</title><desc id="desc">Local checks, imported UVM evidence, and bounded formal each contribute distinct results.</desc>
+<defs>
+<marker id="blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#2563eb"/></marker>
+<marker id="teal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#0f766e"/></marker>
+<marker id="purple" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#7c3aed"/></marker>
+<marker id="amber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#b45309"/></marker>
+<marker id="gray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#52627a"/></marker>
+</defs>
+<rect width="1040" height="710" rx="16" fill="#f8fafc"/>
+<text x="32" y="43" font-family="DejaVu Sans, Arial, sans-serif" font-size="27" fill="#16243a" font-weight="700" text-anchor="start">Verification flow</text>
+<text x="32" y="72" font-family="DejaVu Sans, Arial, sans-serif" font-size="15" fill="#52627a" font-weight="400" text-anchor="start">Local checks, imported UVM evidence, and bounded formal each contribute distinct results.</text>
+<rect x="32" y="108" width="470" height="266" rx="12" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.5"/>
+<text x="52" y="138" font-family="DejaVu Sans, Arial, sans-serif" font-size="14" fill="#2563eb" font-weight="700" text-anchor="start">LOCAL AUTOMATION</text>
+<rect x="56" y="162" width="422" height="80" rx="12" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+<text x="267.0" y="192" font-family="DejaVu Sans, Arial, sans-serif" font-size="18" fill="#2563eb" font-weight="700" text-anchor="middle">Elaborate + lint</text>
+<text x="267.0" y="219" font-family="DejaVu Sans, Arial, sans-serif" font-size="15" fill="#16243a" font-weight="400" text-anchor="middle">make elab · make lint</text>
+<path d="M 267 242 V 271" fill="none" stroke="#2563eb" stroke-width="2.4" stroke-linejoin="round" marker-end="url(#blue)"/>
+<rect x="56" y="274" width="422" height="76" rx="12" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+<text x="267.0" y="304" font-family="DejaVu Sans, Arial, sans-serif" font-size="18" fill="#2563eb" font-weight="700" text-anchor="middle">RTL regression</text>
+<text x="267.0" y="331" font-family="DejaVu Sans, Arial, sans-serif" font-size="15" fill="#16243a" font-weight="400" text-anchor="middle">make regression · Verilator + SVA</text>
+<rect x="538" y="108" width="470" height="266" rx="12" fill="#f0fdfa" stroke="#5eead4" stroke-width="1.5"/>
+<text x="558" y="138" font-family="DejaVu Sans, Arial, sans-serif" font-size="14" fill="#0f766e" font-weight="700" text-anchor="start">UVM SIMULATION</text>
+<rect x="562" y="162" width="422" height="80" rx="12" fill="#fff" stroke="#0f766e" stroke-width="1.5"/>
+<text x="773.0" y="192" font-family="DejaVu Sans, Arial, sans-serif" font-size="18" fill="#0f766e" font-weight="700" text-anchor="middle">Create four bundles</text>
+<text x="773.0" y="219" font-family="DejaVu Sans, Arial, sans-serif" font-size="15" fill="#16243a" font-weight="400" text-anchor="middle">make playground PLAY=proto|reg|ral|rand</text>
+<path d="M 773 242 V 271" fill="none" stroke="#0f766e" stroke-width="2.4" stroke-linejoin="round" marker-end="url(#teal)"/>
+<rect x="562" y="274" width="422" height="76" rx="12" fill="#fff" stroke="#0f766e" stroke-width="1.5"/>
+<text x="773.0" y="304" font-family="DejaVu Sans, Arial, sans-serif" font-size="18" fill="#0f766e" font-weight="700" text-anchor="middle">EDA Playground · Xcelium</text>
+<text x="773.0" y="331" font-family="DejaVu Sans, Arial, sans-serif" font-size="15" fill="#16243a" font-weight="400" text-anchor="middle">Manual paste + run → make import-log</text>
+<path d="M 267 350 V 406 H 450 V 438" fill="none" stroke="#2563eb" stroke-width="2.4" stroke-linejoin="round" marker-end="url(#blue)"/>
+<path d="M 773 350 V 406 H 590 V 438" fill="none" stroke="#0f766e" stroke-width="2.4" stroke-linejoin="round" marker-end="url(#teal)"/>
+<text x="620" y="428" font-family="DejaVu Sans, Arial, sans-serif" font-size="13" fill="#0f766e" font-weight="400" text-anchor="start">Imported logs join regression</text>
+<rect x="225" y="440" width="590" height="90" rx="12" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+<text x="520.0" y="470" font-family="DejaVu Sans, Arial, sans-serif" font-size="18" fill="#2563eb" font-weight="700" text-anchor="middle">Results, triage and coverage</text>
+<text x="520.0" y="497" font-family="DejaVu Sans, Arial, sans-serif" font-size="15" fill="#16243a" font-weight="400" text-anchor="middle">make triage · make coverage · make vplan</text>
+<text x="520.0" y="520" font-family="DejaVu Sans, Arial, sans-serif" font-size="15" fill="#16243a" font-weight="400" text-anchor="middle">Failure signatures · coverage gaps · feature → test → result</text>
+<rect x="32" y="570" width="470" height="106" rx="12" fill="#faf5ff" stroke="#d8b4fe" stroke-width="1.5"/>
+<text x="52" y="599" font-family="DejaVu Sans, Arial, sans-serif" font-size="17" fill="#7c3aed" font-weight="700" text-anchor="start">FORMAL · independent evidence</text>
+<text x="52" y="628" font-family="DejaVu Sans, Arial, sans-serif" font-size="16" fill="#16243a" font-weight="400" text-anchor="start">make formal · Yosys + Z3</text>
+<text x="52" y="655" font-family="DejaVu Sans, Arial, sans-serif" font-size="14" fill="#52627a" font-weight="400" text-anchor="start">Bounded properties + non-vacuity covers</text>
+<rect x="538" y="570" width="470" height="106" rx="12" fill="#fffbeb" stroke="#fcd34d" stroke-width="1.5"/>
+<text x="558" y="599" font-family="DejaVu Sans, Arial, sans-serif" font-size="17" fill="#b45309" font-weight="700" text-anchor="start">REGISTER GENERATION · shared source</text>
+<text x="558" y="628" font-family="DejaVu Sans, Arial, sans-serif" font-size="16" fill="#16243a" font-weight="400" text-anchor="start">make regmap · scripts/regmap.yaml</text>
+<text x="558" y="655" font-family="DejaVu Sans, Arial, sans-serif" font-size="14" fill="#52627a" font-weight="400" text-anchor="start">RTL package + RAL model + register documentation</text>
+</svg>

@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1040" height="635" viewBox="0 0 1040 635" role="img" aria-labelledby="title desc">
+<title id="title">Five channels, independent handshakes</title><desc id="desc">Arrows show payload + VALID direction. READY always travels in the opposite direction.</desc>
+<defs>
+<marker id="blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#2563eb"/></marker>
+<marker id="teal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#0f766e"/></marker>
+<marker id="purple" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#7c3aed"/></marker>
+<marker id="amber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#b45309"/></marker>
+<marker id="gray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#52627a"/></marker>
+</defs>
+<rect width="1040" height="635" rx="16" fill="#f8fafc"/>
+<text x="32" y="43" font-family="DejaVu Sans, Arial, sans-serif" font-size="27" fill="#16243a" font-weight="700" text-anchor="start">Five channels, independent handshakes</text>
+<text x="32" y="72" font-family="DejaVu Sans, Arial, sans-serif" font-size="15" fill="#52627a" font-weight="400" text-anchor="start">Arrows show payload + VALID direction. READY always travels in the opposite direction.</text>
+<rect x="32" y="116" width="180" height="373" rx="12" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.5"/>
+<rect x="828" y="116" width="180" height="373" rx="12" fill="#f0fdfa" stroke="#5eead4" stroke-width="1.5"/>
+<text x="122" y="283" font-family="DejaVu Sans, Arial, sans-serif" font-size="23" fill="#2563eb" font-weight="700" text-anchor="middle">UVM</text>
+<text x="122" y="316" font-family="DejaVu Sans, Arial, sans-serif" font-size="20" fill="#2563eb" font-weight="700" text-anchor="middle">MASTER</text>
+<text x="918" y="283" font-family="DejaVu Sans, Arial, sans-serif" font-size="23" fill="#0f766e" font-weight="700" text-anchor="middle">DUT</text>
+<text x="918" y="316" font-family="DejaVu Sans, Arial, sans-serif" font-size="20" fill="#0f766e" font-weight="700" text-anchor="middle">SLAVE</text>
+<path d="M 212 150 H 828" fill="none" stroke="#2563eb" stroke-width="2.4" stroke-linejoin="round" marker-end="url(#blue)"/>
+<rect x="310" y="124" width="420" height="51" rx="8" fill="#fff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="328" y="155" font-family="DejaVu Sans, Arial, sans-serif" font-size="19" fill="#2563eb" font-weight="700" text-anchor="start">AW</text>
+<text x="387" y="145" font-family="DejaVu Sans, Arial, sans-serif" font-size="15" fill="#16243a" font-weight="700" text-anchor="start">Write address</text>
+<text x="387" y="165" font-family="DejaVu Sans Mono, monospace" font-size="12" fill="#52627a" font-weight="400" text-anchor="start">AWADDR · AWPROT</text>
+<path d="M 212 222 H 828" fill="none" stroke="#2563eb" stroke-width="2.4" stroke-linejoin="round" marker-end="url(#blue)"/>
+<rect x="310" y="196" width="420" height="51" rx="8" fill="#fff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="328" y="227" font-family="DejaVu Sans, Arial, sans-serif" font-size="19" fill="#2563eb" font-weight="700" text-anchor="start">W</text>
+<text x="387" y="217" font-family="DejaVu Sans, Arial, sans-serif" font-size="15" fill="#16243a" font-weight="700" text-anchor="start">Write data</text>
+<text x="387" y="237" font-family="DejaVu Sans Mono, monospace" font-size="12" fill="#52627a" font-weight="400" text-anchor="start">WDATA · WSTRB</text>
+<path d="M 828 294 H 212" fill="none" stroke="#0f766e" stroke-width="2.4" stroke-linejoin="round" marker-end="url(#teal)"/>
+<rect x="310" y="268" width="420" height="51" rx="8" fill="#fff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="328" y="299" font-family="DejaVu Sans, Arial, sans-serif" font-size="19" fill="#0f766e" font-weight="700" text-anchor="start">B</text>
+<text x="387" y="289" font-family="DejaVu Sans, Arial, sans-serif" font-size="15" fill="#16243a" font-weight="700" text-anchor="start">Write response</text>
+<text x="387" y="309" font-family="DejaVu Sans Mono, monospace" font-size="12" fill="#52627a" font-weight="400" text-anchor="start">BRESP</text>
+<path d="M 212 386 H 828" fill="none" stroke="#2563eb" stroke-width="2.4" stroke-linejoin="round" marker-end="url(#blue)"/>
+<rect x="310" y="360" width="420" height="51" rx="8" fill="#fff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="328" y="391" font-family="DejaVu Sans, Arial, sans-serif" font-size="19" fill="#2563eb" font-weight="700" text-anchor="start">AR</text>
+<text x="387" y="381" font-family="DejaVu Sans, Arial, sans-serif" font-size="15" fill="#16243a" font-weight="700" text-anchor="start">Read address</text>
+<text x="387" y="401" font-family="DejaVu Sans Mono, monospace" font-size="12" fill="#52627a" font-weight="400" text-anchor="start">ARADDR · ARPROT</text>
+<path d="M 828 458 H 212" fill="none" stroke="#0f766e" stroke-width="2.4" stroke-linejoin="round" marker-end="url(#teal)"/>
+<rect x="310" y="432" width="420" height="51" rx="8" fill="#fff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="328" y="463" font-family="DejaVu Sans, Arial, sans-serif" font-size="19" fill="#0f766e" font-weight="700" text-anchor="start">R</text>
+<text x="387" y="453" font-family="DejaVu Sans, Arial, sans-serif" font-size="15" fill="#16243a" font-weight="700" text-anchor="start">Read data + response</text>
+<text x="387" y="473" font-family="DejaVu Sans Mono, monospace" font-size="12" fill="#52627a" font-weight="400" text-anchor="start">RDATA · RRESP</text>
+<rect x="32" y="519" width="976" height="85" rx="12" fill="#fff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="52" y="546" font-family="DejaVu Sans, Arial, sans-serif" font-size="16" fill="#16243a" font-weight="700" text-anchor="start">TRANSFER: VALID and READY are both high on a rising ACLK edge.</text>
+<text x="52" y="571" font-family="DejaVu Sans, Arial, sans-serif" font-size="15" fill="#52627a" font-weight="400" text-anchor="start">AW and W may arrive in either order. Hold VALID and payload stable until acceptance.</text>
+<text x="52" y="592" font-family="DejaVu Sans, Arial, sans-serif" font-size="15" fill="#52627a" font-weight="400" text-anchor="start">This design allows one outstanding write and one outstanding read at the same time.</text>
+</svg>
