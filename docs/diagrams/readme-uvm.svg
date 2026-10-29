@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="940" viewBox="0 0 1100 940" role="img" aria-labelledby="title desc">
+<title id="title">UVM verification environment</title><desc id="desc">Stimulus travels to the pins; checking and coverage consume observed transactions.</desc>
+<defs>
+<marker id="blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#2563eb"/></marker>
+<marker id="teal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#0f766e"/></marker>
+<marker id="purple" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#7c3aed"/></marker>
+<marker id="amber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#b45309"/></marker>
+<marker id="gray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#52627a"/></marker>
+</defs>
+<rect width="1100" height="940" rx="16" fill="#f8fafc"/>
+<text x="32" y="43" font-family="DejaVu Sans, Arial, sans-serif" font-size="27" fill="#16243a" font-weight="700" text-anchor="start">UVM verification environment</text>
+<text x="32" y="72" font-family="DejaVu Sans, Arial, sans-serif" font-size="15" fill="#52627a" font-weight="400" text-anchor="start">Stimulus travels to the pins; checking and coverage consume observed transactions.</text>
+<rect x="24" y="96" width="1052" height="677" rx="12" fill="#fff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="44" y="123" font-family="DejaVu Sans, Arial, sans-serif" font-size="15" fill="#52627a" font-weight="700" text-anchor="start">uvm_test  /  axi_env</text>
+<rect x="748" y="143" width="300" height="598" rx="12" fill="#faf5ff" stroke="#d8b4fe" stroke-width="1.5"/>
+<text x="768" y="170" font-family="DejaVu Sans, Arial, sans-serif" font-size="14" fill="#7c3aed" font-weight="700" text-anchor="start">OPTIONAL RAL</text>
+<text x="768" y="194" font-family="DejaVu Sans Mono, monospace" font-size="13" fill="#52627a" font-weight="400" text-anchor="start">AXI_RAL + use_ral</text>
+<rect x="772" y="220" width="252" height="88" rx="12" fill="#f3e8ff" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="898.0" y="250" font-family="DejaVu Sans, Arial, sans-serif" font-size="18" fill="#7c3aed" font-weight="700" text-anchor="middle">axi_reg_block</text>
+<text x="898.0" y="277" font-family="DejaVu Sans, Arial, sans-serif" font-size="15" fill="#16243a" font-weight="400" text-anchor="middle">Register model + mirror</text>
+<rect x="772" y="356" width="252" height="88" rx="12" fill="#f3e8ff" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="898.0" y="386" font-family="DejaVu Sans, Arial, sans-serif" font-size="17" fill="#7c3aed" font-weight="700" text-anchor="middle">axi_reg_adapter</text>
+<text x="898.0" y="413" font-family="DejaVu Sans, Arial, sans-serif" font-size="15" fill="#16243a" font-weight="400" text-anchor="middle">Register ↔ bus conversion</text>
+<path d="M 898 308 V 356" fill="none" stroke="#7c3aed" stroke-width="2.4" stroke-linejoin="round" marker-end="url(#purple)"/>
+<text x="912" y="339" font-family="DejaVu Sans, Arial, sans-serif" font-size="13" fill="#7c3aed" font-weight="400" text-anchor="start">frontdoor</text>
+<rect x="48" y="210" width="334" height="360" rx="12" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.5"/>
+<text x="68" y="238" font-family="DejaVu Sans, Arial, sans-serif" font-size="18" fill="#2563eb" font-weight="700" text-anchor="start">axi_master_agent</text>
+<rect x="78" y="268" width="274" height="76" rx="12" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+<text x="215.0" y="298" font-family="DejaVu Sans, Arial, sans-serif" font-size="18" fill="#2563eb" font-weight="700" text-anchor="middle">Sequencer</text>
+<text x="215.0" y="325" font-family="DejaVu Sans, Arial, sans-serif" font-size="15" fill="#16243a" font-weight="400" text-anchor="middle">axi_sequencer</text>
+<rect x="78" y="396" width="274" height="83" rx="12" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+<text x="215.0" y="426" font-family="DejaVu Sans, Arial, sans-serif" font-size="18" fill="#2563eb" font-weight="700" text-anchor="middle">Driver</text>
+<text x="215.0" y="453" font-family="DejaVu Sans, Arial, sans-serif" font-size="15" fill="#16243a" font-weight="400" text-anchor="middle">Five channel threads</text>
+<path d="M 215 344 V 396" fill="none" stroke="#2563eb" stroke-width="2.4" stroke-linejoin="round" marker-end="url(#blue)"/>
+<text x="231" y="376" font-family="DejaVu Sans, Arial, sans-serif" font-size="13" fill="#2563eb" font-weight="400" text-anchor="start">sequence items</text>
+<text x="240" y="542" font-family="DejaVu Sans, Arial, sans-serif" font-size="14" fill="#2563eb" font-weight="400" text-anchor="start">Stimulus</text>
+<text x="70" y="173" font-family="DejaVu Sans, Arial, sans-serif" font-size="16" fill="#16243a" font-weight="700" text-anchor="start">Directed / random sequences</text>
+<path d="M 215 183 V 210" fill="none" stroke="#2563eb" stroke-width="2.4" stroke-linejoin="round" marker-end="url(#blue)"/>
+<path d="M 772 400 H 719 V 306 H 352" fill="none" stroke="#7c3aed" stroke-width="2.4" stroke-linejoin="round" marker-end="url(#purple)"/>
+<text x="430" y="292" font-family="DejaVu Sans, Arial, sans-serif" font-size="13" fill="#7c3aed" font-weight="400" text-anchor="start">frontdoor bus items</text>
+<rect x="430" y="350" width="260" height="82" rx="12" fill="#f0fdfa" stroke="#0f766e" stroke-width="1.5"/>
+<text x="560.0" y="380" font-family="DejaVu Sans, Arial, sans-serif" font-size="18" fill="#0f766e" font-weight="700" text-anchor="middle">Scoreboard</text>
+<text x="560.0" y="407" font-family="DejaVu Sans, Arial, sans-serif" font-size="15" fill="#16243a" font-weight="400" text-anchor="middle">Spec-derived reference model</text>
+<rect x="430" y="470" width="260" height="82" rx="12" fill="#f0fdfa" stroke="#0f766e" stroke-width="1.5"/>
+<text x="560.0" y="500" font-family="DejaVu Sans, Arial, sans-serif" font-size="18" fill="#0f766e" font-weight="700" text-anchor="middle">Coverage collector</text>
+<text x="560.0" y="527" font-family="DejaVu Sans, Arial, sans-serif" font-size="15" fill="#16243a" font-weight="400" text-anchor="middle">11 groups + reset events</text>
+<rect x="772" y="610" width="252" height="88" rx="12" fill="#f3e8ff" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="898.0" y="640" font-family="DejaVu Sans, Arial, sans-serif" font-size="17" fill="#7c3aed" font-weight="700" text-anchor="middle">uvm_reg_predictor</text>
+<text x="898.0" y="667" font-family="DejaVu Sans, Arial, sans-serif" font-size="15" fill="#16243a" font-weight="400" text-anchor="middle">Explicit mirror prediction</text>
+<path d="M 1024 654 H 1037 V 265 H 1024" fill="none" stroke="#7c3aed" stroke-width="2.4" stroke-linejoin="round" marker-end="url(#purple)"/>
+<text x="789" y="720" font-family="DejaVu Sans, Arial, sans-serif" font-size="14" fill="#7c3aed" font-weight="400" text-anchor="start">Auto-predict disabled</text>
+<rect x="430" y="610" width="260" height="88" rx="12" fill="#f0fdfa" stroke="#0f766e" stroke-width="1.5"/>
+<text x="560.0" y="640" font-family="DejaVu Sans, Arial, sans-serif" font-size="18" fill="#0f766e" font-weight="700" text-anchor="middle">Passive monitor</text>
+<text x="560.0" y="667" font-family="DejaVu Sans, Arial, sans-serif" font-size="15" fill="#16243a" font-weight="400" text-anchor="middle">axi_monitor · inside agent</text>
+<path d="M 560 610 V 552" fill="none" stroke="#0f766e" stroke-width="2.4" stroke-linejoin="round" marker-end="url(#teal)"/>
+<path d="M 430 650 H 407 V 391 H 430" fill="none" stroke="#0f766e" stroke-width="2.4" stroke-linejoin="round" marker-end="url(#teal)"/>
+<path d="M 690 654 H 772" fill="none" stroke="#0f766e" stroke-width="2.4" stroke-linejoin="round" marker-end="url(#teal)"/>
+<text x="698" y="638" font-family="DejaVu Sans, Arial, sans-serif" font-size="12" fill="#0f766e" font-weight="400" text-anchor="start">mon.ap</text>
+<rect x="48" y="800" width="642" height="62" rx="12" fill="#e2e8f0" stroke="#94a3b8" stroke-width="1.5"/>
+<text x="369" y="838" font-family="DejaVu Sans, Arial, sans-serif" font-size="18" fill="#16243a" font-weight="700" text-anchor="middle">axi4lite_if  ·  bus pins + ARESETn</text>
+<path d="M 215 479 V 800" fill="none" stroke="#2563eb" stroke-width="2.4" stroke-linejoin="round" marker-end="url(#blue)"/>
+<text x="64" y="693" font-family="DejaVu Sans, Arial, sans-serif" font-size="13" fill="#2563eb" font-weight="400" text-anchor="start">Drive / receive</text>
+<text x="64" y="715" font-family="DejaVu Sans, Arial, sans-serif" font-size="13" fill="#2563eb" font-weight="400" text-anchor="start">AW · W · B · AR · R</text>
+<path d="M 560 800 V 698" fill="none" stroke="#0f766e" stroke-width="2.4" stroke-linejoin="round" marker-end="url(#teal)"/>
+<text x="578" y="789" font-family="DejaVu Sans, Arial, sans-serif" font-size="13" fill="#0f766e" font-weight="400" text-anchor="start">sample</text>
+<rect x="748" y="800" width="300" height="62" rx="12" fill="#fffbeb" stroke="#b45309" stroke-width="1.5"/>
+<text x="898.0" y="830" font-family="DejaVu Sans, Arial, sans-serif" font-size="18" fill="#b45309" font-weight="700" text-anchor="middle">Protocol checker ×3</text>
+<text x="755" y="885" font-family="DejaVu Sans, Arial, sans-serif" font-size="13" fill="#b45309" font-weight="400" text-anchor="start">Bound at master + both slave ports</text>
+<path d="M 690 831 H 748" fill="none" stroke="#b45309" stroke-width="2.4" stroke-linejoin="round" marker-end="url(#amber)" stroke-dasharray="7 5"/>
+<path d="M 369 862 V 898" fill="none" stroke="#2563eb" stroke-width="2.4" stroke-linejoin="round" marker-end="url(#blue)" marker-start="url(#blue)"/>
+<text x="369" y="924" font-family="DejaVu Sans, Arial, sans-serif" font-size="17" fill="#16243a" font-weight="700" text-anchor="middle">DUT: interconnect + register slave + memory slave</text>
+</svg>

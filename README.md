@@ -6,11 +6,16 @@ and a byte-addressable memory. The design is deliberately small so the effort
 goes into the methodology.
 
 **Status: complete.** Every feature in the verification plan has a test, every
-test has a result, and every uncovered bin has a written justification. Every
-figure below came from a run.
+test has a result, and every uncovered bin has a written justification.
+Reported results below come from project runs; the diagrams explain the
+implementation.
 
 `SystemVerilog` · `UVM` · `SVA` · `Functional Coverage` · `Constrained Random` ·
 `UVM RAL` · `Formal (BMC)` · `AXI4-Lite`
+
+**Explore:** [Architecture](#architecture) · [UVM environment](#verification-environment) ·
+[Results](#results) · [Run the flow](#the-flow) · [Bug findings](#what-the-testbench-found) ·
+[Documentation](#documentation)
 
 ---
 
@@ -25,6 +30,52 @@ model is derived from the specification rather than the RTL. Eleven functional
 covergroups fed from observation. A RAL model generated from the same YAML that
 generates the RTL's register map. A bounded model check for the rules simulation
 cannot decide. And a flow that runs all of it.
+
+## Architecture
+
+![AXI4-Lite subsystem: a UVM master connects through a range-decoding interconnect to a register slave and a 1 KB memory; unmapped addresses return DECERR.](docs/diagrams/readme-subsystem.svg)
+
+*The register region is 4 KB, but only eight word-aligned registers are
+implemented. Unimplemented register offsets return `SLVERR`; addresses outside
+both slave regions return `DECERR` without reaching a slave.*
+
+The gap is the interesting part of the map. `ADDR[12]` alone routes `0x1400` to
+memory, where it aliases onto word 0 of a 256-word array and is answered as if it
+were valid. That is specification §9's BUG-005 injection, and the decode is a
+range comparison because of it.
+
+## Verification environment
+
+![UVM environment showing the sequencer and driver stimulus path, passive pin monitor, scoreboard, coverage collector, and optional RAL adapter and explicit predictor.](docs/diagrams/readme-uvm.svg)
+
+*Blue follows stimulus to the interface; green follows observations to checking
+and coverage. Purple shows the optional RAL path. The monitor belongs to the
+agent and has no driver handle; its separate reset port feeds both the scoreboard
+and coverage collector.*
+
+### AXI channel independence
+
+![Five AXI4-Lite channels showing payload and VALID directions, opposite READY direction, and the rising-edge handshake rule.](docs/diagrams/readme-channels.svg)
+
+**Driver:** one thread per AXI channel (`fork … join_none`), not a sequential
+FSM. AW and W are independent channels; driving them in lockstep would never
+exercise W-before-AW and would hide slave-side ordering bugs. `item_done()` fires
+on **acceptance**, not completion, so a read can overlap a write — which
+specification §1 permits and which `STATUS.busy` requires to be observable at
+all.
+
+**Monitor:** fully passive, no handle to the driver, reconstructs from pins only.
+It also counts the cycle-level timing the three newest covergroups need, and
+watches `ARESETn` so a transaction reset takes away is *counted* rather than
+silently dropped.
+
+**RAL:** generated from `scripts/regmap.yaml`, and its mirror is updated by a
+`uvm_reg_predictor` on the monitor's analysis port — **explicit prediction, not
+auto-predict**. A mirror fed by the operation the sequence issued agrees with the
+sequence; one fed by the pins is evidence.
+
+**Three checker instances** on a system build: the interconnect as a slave from
+the master's side, and as a master from each slave's side.
 
 ## The result worth leading with
 
@@ -42,6 +93,34 @@ this testbench cannot reach *by construction* — the collision happens inside a
 single transaction, and the scoreboard compares values across whole transactions,
 so no number of seeds reaches it. `axi_int_status_seq` says so in writing and
 declines to claim it. [formal_notes.md](docs/formal_notes.md).
+
+## Results
+
+All measured. Regenerate with `make all`.
+
+| Metric | Value |
+|---|---|
+| **Local regression** | 17 runs, **9,044 / 9,044 checks**, parallel, **12.0 seconds**. `make regression` |
+| **UVM on Xcelium** | 4 bundles, **0 `UVM_ERROR`**. 2,779 bus responses checked against the reference model, **0 mismatches**. 313 directed checks across `protocol` (235), `register` (60) and `ral` (18), plus 8 seeds of random traffic |
+| **Non-UVM benches** | `sanity_tb` 31 · `sanity_mem_tb` 27 · `sanity_sys_tb` 36 · `sanity_rand_tb` ~890/seed × 10 seeds |
+| **Cover properties** | **14 of 14 non-zero.** Five of them read 0 in every run this project made until the interconnect and the seeded random bench existed — closed locally, under Verilator |
+| **Functional coverage** | 11 groups + 4 crosses, all modelled, sampled from observation. **Ten of eleven groups reach 100%**; the eleventh is at its structural maximum (`cg_valid_delay`'s `d0` bin cannot be produced by this driver's shape). Every bin this environment can hit, it hits. [coverage_status.md](docs/coverage_status.md) |
+| **Traceability** | 29 features → test → result, generated from the *specification's* feature list so an unclaimed feature shows as `UNCOVERED`. [traceability.md](docs/traceability.md) |
+| **Formal** | 16 safety properties, PASSED at depth 25 and 40, with a cover pass proving none of them is vacuous |
+| **Elaboration** | 8 UVM bundles, 0 errors, under a second. `make elab` |
+| **Bugs** | 6 injected — 5 caught by their assigned mechanism, 1 caught by three others while its assigned one proved blind · **8 genuine, all eight in the testbench**. [bug_reports/](docs/bug_reports/) |
+| **LLM triage** | **4/6 correct, 2/6 partial, 0/6 wrong** — and the two earlier measurements that were invalid. [llm_triage.md](docs/llm_triage.md) |
+
+**Read the coverage narrowly.** Some cover points are zero at the slave ports and
+must stay that way — `DECERR` at a slave port would be a defect, not coverage.
+Which zeros are structural and which would be gaps is written out in
+[coverage_status.md](docs/coverage_status.md).
+
+Every response is checked against a reference model derived from the spec, fed by
+a monitor that reconstructs from pins and has no access to the driver. Read data
+the model **cannot** predict — `COUNTER`, `STATUS.busy`, `INT_STATUS[3]` — is
+reported as skipped rather than silently passed, and the generated RAL declines
+to check exactly the same four fields.
 
 ## What the testbench found
 
@@ -113,104 +192,12 @@ themselves:
   independently by random traffic on the first seed**, which knows the map's
   shape but not where its boundaries are. ([BUG-005](docs/bug_reports/BUG-005.md))
 
-## Results
-
-All measured. Regenerate with `make all`.
-
-| Metric | Value |
-|---|---|
-| **Local regression** | 17 runs, **9,044 / 9,044 checks**, parallel, **12.0 seconds**. `make regression` |
-| **UVM on Xcelium** | 4 bundles, **0 `UVM_ERROR`**. 2,779 bus responses checked against the reference model, **0 mismatches**. 313 directed checks across `protocol` (235), `register` (60) and `ral` (18), plus 8 seeds of random traffic |
-| **Non-UVM benches** | `sanity_tb` 31 · `sanity_mem_tb` 27 · `sanity_sys_tb` 36 · `sanity_rand_tb` ~890/seed × 10 seeds |
-| **Cover properties** | **14 of 14 non-zero.** Five of them read 0 in every run this project made until the interconnect and the seeded random bench existed — closed locally, under Verilator |
-| **Functional coverage** | 11 groups + 4 crosses, all modelled, sampled from observation. **Ten of eleven groups reach 100%**; the eleventh is at its structural maximum (`cg_valid_delay`'s `d0` bin cannot be produced by this driver's shape). Every bin this environment can hit, it hits. [coverage_status.md](docs/coverage_status.md) |
-| **Traceability** | 29 features → test → result, generated from the *specification's* feature list so an unclaimed feature shows as `UNCOVERED`. [traceability.md](docs/traceability.md) |
-| **Formal** | 16 safety properties, PASSED at depth 25 and 40, with a cover pass proving none of them is vacuous |
-| **Elaboration** | 8 UVM bundles, 0 errors, under a second. `make elab` |
-| **Bugs** | 6 injected — 5 caught by their assigned mechanism, 1 caught by three others while its assigned one proved blind · **8 genuine, all eight in the testbench**. [bug_reports/](docs/bug_reports/) |
-| **LLM triage** | **4/6 correct, 2/6 partial, 0/6 wrong** — and the two earlier measurements that were invalid. [llm_triage.md](docs/llm_triage.md) |
-
-**Read the coverage narrowly.** Some cover points are zero at the slave ports and
-must stay that way — `DECERR` at a slave port would be a defect, not coverage.
-Which zeros are structural and which would be gaps is written out in
-[coverage_status.md](docs/coverage_status.md).
-
-Every response is checked against a reference model derived from the spec, fed by
-a monitor that reconstructs from pins and has no access to the driver. Read data
-the model **cannot** predict — `COUNTER`, `STATUS.busy`, `INT_STATUS[3]` — is
-reported as skipped rather than silently passed, and the generated RAL declines
-to check exactly the same four fields.
-
-## Architecture
-
-```
-                    ╔═════════════════════════════╗
-   AXI4-Lite        ║   AXI4-Lite Interconnect    ║
-   Master ─────────▶║   (address decode + mux)    ║
-   (UVM agent)      ╚══════╤═══════════════╤══════╝
-                           │               │
-                  0x0000_0000      0x0000_1000
-                           │               │
-                    ┌──────▼──────┐  ┌─────▼──────┐
-                    │  Register   │  │   Memory   │
-                    │  File Slave │  │   Slave    │
-                    │RW/RO/W1C/WC │  │   1 KB     │
-                    └─────────────┘  └────────────┘
-
-              0x0000_1400 – 0x0000_1FFF → DECERR
-              (an unmapped gap INSIDE what a single-bit decode
-               would call memory — which is exactly why it exists)
-```
-
-The gap is the interesting part of the map. `ADDR[12]` alone routes `0x1400` to
-memory, where it aliases onto word 0 of a 256-word array and is answered as if it
-were valid. That is specification §9's BUG-005 injection, and the decode is a
-range comparison because of it.
-
-## Verification environment
-
-```
-                        uvm_test
-                           │
-                       axi_env
-        ┌──────────────┬────┴─────┬──────────────┐
-        │              │          │              │
-  axi_master_agent  scoreboard  coverage     axi_reg_block
-   ┌────┴────┐      (ref model) (11 groups)     (RAL)
-   │sequencer│           ▲          ▲              │
-   │ driver  │◀───── reg_adapter ───┼──────────────┘
-   │ monitor │───────────┴──────────┘
-   └────┬────┘        analysis port + uvm_reg_predictor
-        │
-    axi4lite_if ──── axi4lite_protocol_checker (SVA, bound ×3)
-        │
-   interconnect ──▶ reg slave, mem slave
-```
-
-**Driver:** one thread per AXI channel (`fork … join_none`), not a sequential
-FSM. AW and W are independent channels; driving them in lockstep would never
-exercise W-before-AW and would hide slave-side ordering bugs. `item_done()` fires
-on **acceptance**, not completion, so a read can overlap a write — which
-specification §1 permits and which `STATUS.busy` requires to be observable at
-all.
-
-**Monitor:** fully passive, no handle to the driver, reconstructs from pins only.
-It also counts the cycle-level timing the three newest covergroups need, and
-watches `ARESETn` so a transaction reset takes away is *counted* rather than
-silently dropped.
-
-**RAL:** generated from `scripts/regmap.yaml`, and its mirror is updated by a
-`uvm_reg_predictor` on the monitor's analysis port — **explicit prediction, not
-auto-predict**. A mirror fed by the operation the sequence issued agrees with the
-sequence; one fed by the pins is evidence.
-
-**Three checker instances** on a system build: the interconnect as a slave from
-the master's side, and as a master from each slave's side.
-
 ## The flow
 
+![Verification workflow connecting local elaboration and RTL regression with manually run Xcelium bundles and imported logs; formal and register generation are separate tracks.](docs/diagrams/readme-flow.svg)
+
 ```bash
-make setup        # one-time: slang, yosys, z3, UVM 1.2 source
+make setup        # requires Homebrew; installs slang, yosys, z3, UVM 1.2 source
 make all          # everything that needs no person
 ```
 
@@ -228,10 +215,11 @@ make all          # everything that needs no person
 | `make playground PLAY=proto` | Bundle the UVM environment for EDA Playground (`proto` \| `reg` \| `ral` \| `rand`) |
 | `make import-log LOG=…` | Bring a Playground log back in |
 
-**There is exactly one manual step in the whole flow, and it is a property of the
-tools rather than of the flow:** no free simulator runs UVM. Icarus and Verilator
-have no UVM support, so the environment runs on Xcelium via EDA Playground —
-two panes, pasted by hand.
+**The UVM simulation step uses EDA Playground with Xcelium:** this project's
+validated local flow uses slang for UVM elaboration and Verilator for the
+non-UVM benches. The UVM bundles are pasted into two Playground panes, run
+manually, and their logs imported into the reporting flow. See the measured
+[tooling notes](docs/tooling_notes.md) for the tool versions and limitations.
 
 Everything is built around minimising that. The thirteen directed scenarios are
 written as **sequences** with thin test wrappers, so many run inside one
@@ -292,26 +280,22 @@ disagreed with the parser about time normalisation (the parser was right).
 
 ## Repository layout
 
-```
-├── rtl/
-│   ├── gen/axi4lite_reg_pkg.sv    GENERATED from scripts/regmap.yaml
-│   ├── axi4lite_reg_slave.sv      8 registers, RW/RO/W1C/WC, error precedence
-│   ├── axi4lite_mem_slave.sv      256 words, WSTRB byte masking
-│   └── axi4lite_interconnect.sv   decode + mux, DECERR, held-W buffer
-├── tb/
-│   ├── interface/                 axi4lite_if.sv + protocol checker, 3 binds
-│   ├── agent/                     transaction, sequencer, driver, monitor, agent
-│   ├── ral/                       axi_reg_block.sv (GENERATED) + adapter
-│   ├── sequences/                 base, smoke, random, memory + 13 directed,
-│   │                              split to fit Playground's pane limit
-│   ├── env/                       env, scoreboard, coverage collector
-│   ├── tests/                     16 tests + 4 grouped runners + 3 tops
-│   └── sanity_*.sv                4 non-UVM benches, incl. seeded random
-├── formal/                        BMC properties + the Yosys/z3 flow
-├── scripts/                       the toolkit: T1–T6, A1, elab, regmap
-├── docs/                          spec, plan, architecture, 10 bug reports
-└── Makefile
-```
+| Path | Contents |
+|---|---|
+| [`rtl/`](rtl/) | Register slave, 256-word memory and range-decoding interconnect |
+| [`rtl/gen/`](rtl/gen/) | Generated register package from `scripts/regmap.yaml` |
+| [`tb/interface/`](tb/interface/) | AXI interface, protocol checker and three system binds |
+| [`tb/agent/`](tb/agent/) | Transaction, sequencer, driver, passive monitor and agent |
+| [`tb/ral/`](tb/ral/) | Generated register model and bus adapter |
+| [`tb/sequences/`](tb/sequences/) | Base, smoke, random, memory and directed scenarios |
+| [`tb/env/`](tb/env/) | Environment, specification-based scoreboard and coverage collector |
+| [`tb/tests/`](tb/tests/) | Tests, grouped runners and testbench tops |
+| [`tb/`](tb/) | Also contains the four `sanity_*.sv` non-UVM benches |
+| [`formal/`](formal/) | Bounded properties and the Yosys/Z3 flow |
+| [`scripts/`](scripts/) | Regression, log parsing, triage, generation and reporting |
+| [`docs/`](docs/) | Specification, plans, architecture, measured reports and 14 bug reports |
+| [`docs/diagrams/`](docs/diagrams/) | README SVG diagrams and existing project illustrations |
+| [`Makefile`](Makefile) | Entry points for the verification and automation flows |
 
 ## Documentation
 
